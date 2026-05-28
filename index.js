@@ -165,43 +165,51 @@ app.get("/api/getUserProfile/:id", (req, res) => {
 ========================= */
 
 app.post("/api/insertSchedules", (req, res) => {
-  const {
-    created_by,
-    title,
-    description,
-    start_time,
-    end_time,
-    location
-  } = req.body;
+  const timestamp = new Date().toLocaleString("id-ID");
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+
+  const { created_by, title, description, start_time, end_time, location } = req.body;
+
+  console.log(`\n[${timestamp}] 📥 POST Request masuk ke /api/insertSchedules`);
+  console.log(`[${timestamp}] 🖥️  Dipanggil oleh IP: ${clientIp}`);
 
   db.query(
     `INSERT INTO schedules 
     (created_by, title, description, start_time, end_time, location) 
      VALUES (?, ?, ?, ?, ?, ?)`,
     [
-      created_by,
+      created_by || 1,
       title,
-      description,
+      description || null,
       start_time,
       end_time,
-      location
+      location || null
     ],
     (err, result) => {
       if (err) {
-        return res.status(500).json({
-          error: err.message
-        });
+        console.error(`[${timestamp}] ❌ Database Error saat INSERT:`, err.message);
+        return res.status(500).json({ error: err.message });
       }
 
-      res.json({
-        id: result.insertId,
-        created_by,
+      // 1. Bungkus data keseluruhan ke dalam satu variabel objek objekResponse
+      const objekResponse = {
+        id: result.insertId, // ID utama hasil auto_increment MySQL
+        created_by: created_by || 1,
         title,
-        description,
+        description: description || null,
         start_time,
         end_time,
-        location
-      });
+        location: location || null,
+        created_at: new Date().toISOString().slice(0, 19).replace('T', ' ') // Format YYYY-MM-DD HH:mm:ss
+      };
+
+      // 2. === LOGKAN LANGSUNG DATA KESELURUHAN YANG DIKIRIM ===
+      console.log(`[${timestamp}] ✅ SUKSES INSERT! Data keseluruhan yang dikirim balik ke Android:`);
+      console.log(JSON.stringify(objekResponse, null, 2)); 
+      // ========================================================
+
+      // 3. Kirim objek yang sama ke Android via Retrofit
+      res.json(objekResponse);
     }
   );
 });
@@ -224,7 +232,21 @@ app.get("/api/getAllSchedules", (req, res) => {
         });
       }
 
-      console.log(`[${timestamp}] 🚀 Sukses mengirim ${results.length} data jadwal ke Android.`);
+      // === PERBAIKAN LOG UNTUK MENAMPILKAN SEMUA DATA ===
+      console.log(`[${timestamp}] 🚀 Sukses mengambil ${results.length} data dari database.`);
+      console.log(`[${timestamp}] 📋 DAFTAR DATA YANG DIKIRIM KE ANDROID:`);
+      
+      if (results.length === 0) {
+        console.log(`[${timestamp}] ⚠️  Tabel kosong, mengirim array kosong [].`);
+      } else {
+        // Opsi 1: Cetak bentuk Tabel rapi di terminal (Sangat direkomendasikan untuk debugging)
+        console.table(results);
+        
+        // Opsi 2: Jika ingin melihat dalam bentuk format JSON teks mentah murni:
+        // console.log(JSON.stringify(results, null, 2));
+      }
+      // ==================================================
+
       res.json(results);
     }
   );
