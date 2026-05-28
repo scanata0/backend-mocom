@@ -165,51 +165,43 @@ app.get("/api/getUserProfile/:id", (req, res) => {
 ========================= */
 
 app.post("/api/insertSchedules", (req, res) => {
-  const timestamp = new Date().toLocaleString("id-ID");
-  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-
-  const { created_by, title, description, start_time, end_time, location } = req.body;
-
-  console.log(`\n[${timestamp}] 📥 POST Request masuk ke /api/insertSchedules`);
-  console.log(`[${timestamp}] 🖥️  Dipanggil oleh IP: ${clientIp}`);
+  const {
+    created_by,
+    title,
+    description,
+    start_time,
+    end_time,
+    location
+  } = req.body;
 
   db.query(
     `INSERT INTO schedules 
     (created_by, title, description, start_time, end_time, location) 
      VALUES (?, ?, ?, ?, ?, ?)`,
     [
-      created_by || 1,
+      created_by,
       title,
-      description || null,
+      description,
       start_time,
       end_time,
-      location || null
+      location
     ],
     (err, result) => {
       if (err) {
-        console.error(`[${timestamp}] ❌ Database Error saat INSERT:`, err.message);
-        return res.status(500).json({ error: err.message });
+        return res.status(500).json({
+          error: err.message
+        });
       }
 
-      // 1. Bungkus data keseluruhan ke dalam satu variabel objek objekResponse
-      const objekResponse = {
-        id: result.insertId, // ID utama hasil auto_increment MySQL
-        created_by: created_by || 1,
+      res.json({
+        id: result.insertId,
+        created_by,
         title,
-        description: description || null,
+        description,
         start_time,
         end_time,
-        location: location || null,
-        created_at: new Date().toISOString().slice(0, 19).replace('T', ' ') // Format YYYY-MM-DD HH:mm:ss
-      };
-
-      // 2. === LOGKAN LANGSUNG DATA KESELURUHAN YANG DIKIRIM ===
-      console.log(`[${timestamp}] ✅ SUKSES INSERT! Data keseluruhan yang dikirim balik ke Android:`);
-      console.log(JSON.stringify(objekResponse, null, 2)); 
-      // ========================================================
-
-      // 3. Kirim objek yang sama ke Android via Retrofit
-      res.json(objekResponse);
+        location
+      });
     }
   );
 });
