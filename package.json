@@ -13,6 +13,16 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "mysql2": "^3.22.3"
-  }
+    "mysql2": "^3.22.4",
+    "sequelize": "^6.37.8"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sterixxco-veve/backend-mocom.git"
+  },
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/sterixxco-veve/backend-mocom/issues"
+  },
+  "homepage": "https://github.com/sterixxco-veve/backend-mocom#readme"
 }

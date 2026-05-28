@@ -165,7 +165,6 @@ app.get("/api/getUserProfile/:id", (req, res) => {
 ========================= */
 
 app.post("/api/insertSchedules", (req, res) => {
-
   const {
     created_by,
     title,
@@ -176,8 +175,8 @@ app.post("/api/insertSchedules", (req, res) => {
   } = req.body;
 
   db.query(
-    `INSERT INTO schedules
-    (created_by, title, description, start_time, end_time, location)
+    `INSERT INTO schedules 
+    (created_by, title, description, start_time, end_time, location) 
      VALUES (?, ?, ?, ?, ?, ?)`,
     [
       created_by,
@@ -188,7 +187,6 @@ app.post("/api/insertSchedules", (req, res) => {
       location
     ],
     (err, result) => {
-
       if (err) {
         return res.status(500).json({
           error: err.message
@@ -209,17 +207,24 @@ app.post("/api/insertSchedules", (req, res) => {
 });
 
 app.get("/api/getAllSchedules", (req, res) => {
+  const timestamp = new Date().toLocaleString("id-ID");
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+
+  console.log(`\n[${timestamp}] 📥 GET Request masuk ke /api/getAllSchedules`);
+  console.log(`[${timestamp}] 🖥️  Dipanggil oleh IP: ${clientIp}`);
 
   db.query(
     "SELECT * FROM schedules",
     (err, results) => {
-
       if (err) {
+        console.error(`[${timestamp}] ❌ Database Error:`, err.message);
+        
         return res.status(500).json({
           error: err.message
         });
       }
 
+      console.log(`[${timestamp}] 🚀 Sukses mengirim ${results.length} data jadwal ke Android.`);
       res.json(results);
     }
   );
@@ -639,11 +644,9 @@ const PORT = 3000;
 
 initDb()
   .then(() => {
-
     app.listen(PORT, () => {
       console.log(`Server running at http://localhost:${PORT}`);
     });
-
   })
   .catch((err) => {
     console.error("Server error:", err);
