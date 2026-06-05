@@ -51,7 +51,7 @@ app.get("/api/getAllRoles", (req, res) => {
 });
 
 /* =========================
-   AUTH & USERS
+   AUTH
 ========================= */
 
 // REGISTER
@@ -161,7 +161,110 @@ app.get("/api/getUserProfile/:id", (req, res) => {
 });
 
 /* =========================
-   SCHEDULES
+  USERS
+========================= */
+
+app.get("/api/getAllUsers", (req, res) => {
+  const timestamp = new Date().toLocaleString("id-ID");
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+
+  console.log(`\n[${timestamp}] 📥 GET Request masuk ke /api/getAllUsers`);
+  console.log(`[${timestamp}] 🖥️  Dipanggil oleh IP: ${clientIp}`);
+
+  db.query(
+    "SELECT * FROM users",
+    (err, results) => {
+      if (err) {
+        console.error(`[${timestamp}] ❌ Database Error:`, err.message);
+        
+        return res.status(500).json({
+          error: err.message
+        });
+      }
+
+      // === PERBAIKAN LOG UNTUK MENAMPILKAN SEMUA DATA ===
+      console.log(`[${timestamp}] 🚀 Sukses mengambil ${results.length} data dari database.`);
+      console.log(`[${timestamp}] 📋 DAFTAR DATA YANG DIKIRIM KE ANDROID:`);
+      
+      if (results.length === 0) {
+        console.log(`[${timestamp}] ⚠️  Tabel kosong, mengirim array kosong [].`);
+      } else {
+        console.table(results);
+      }
+
+      res.json(results);
+    }
+  );
+});
+
+app.get("/api/getAllStaff", (req, res) => {
+  const timestamp = new Date().toLocaleString("id-ID");
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+
+  console.log(`\n[${timestamp}] 📥 GET Request masuk ke /api/getStaff`);
+  console.log(`[${timestamp}] 🖥️  Dipanggil oleh IP: ${clientIp}`);
+
+  db.query(
+    "SELECT * FROM users",
+    (err, results) => {
+      if (err) {
+        console.error(`[${timestamp}] ❌ Database Error:`, err.message);
+        
+        return res.status(500).json({
+          error: err.message
+        });
+      }
+
+      // === PERBAIKAN LOG UNTUK MENAMPILKAN SEMUA DATA ===
+      console.log(`[${timestamp}] 🚀 Sukses mengambil ${results.length} data dari database.`);
+      console.log(`[${timestamp}] 📋 DAFTAR DATA YANG DIKIRIM KE ANDROID:`);
+      
+      if (results.length === 0) {
+        console.log(`[${timestamp}] ⚠️  Tabel kosong, mengirim array kosong [].`);
+      } else {
+        console.table(results);
+      }
+
+      res.json(results);
+    }
+  );
+});
+
+app.get("/api/getAllMember", (req, res) => {
+  const timestamp = new Date().toLocaleString("id-ID");
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+
+  console.log(`\n[${timestamp}] 📥 GET Request masuk ke /api/getMember`);
+  console.log(`[${timestamp}] 🖥️  Dipanggil oleh IP: ${clientIp}`);
+
+  db.query(
+    "SELECT * FROM users",
+    (err, results) => {
+      if (err) {
+        console.error(`[${timestamp}] ❌ Database Error:`, err.message);
+        
+        return res.status(500).json({
+          error: err.message
+        });
+      }
+
+      // === PERBAIKAN LOG UNTUK MENAMPILKAN SEMUA DATA ===
+      console.log(`[${timestamp}] 🚀 Sukses mengambil ${results.length} data dari database.`);
+      console.log(`[${timestamp}] 📋 DAFTAR DATA YANG DIKIRIM KE ANDROID:`);
+      
+      if (results.length === 0) {
+        console.log(`[${timestamp}] ⚠️  Tabel kosong, mengirim array kosong [].`);
+      } else {
+        console.table(results);
+      }
+
+      res.json(results);
+    }
+  );
+});
+
+/* =========================
+  SCHEDULES
 ========================= */
 
 app.post("/api/insertSchedules", (req, res) => {
@@ -293,6 +396,8 @@ app.post("/api/insertAssignments", (req, res) => {
     }
   );
 });
+
+
 
 app.get("/api/getAssignmentsByUserId/:user_id", (req, res) => {
 
