@@ -50,10 +50,71 @@ app.get("/api/getAllRoles", (req, res) => {
   );
 });
 
+app.get("/api/getAllStaffCompany/:company_id", (req, res) => {
+  const { company_id } = req.params;
+
+  db.query(
+    "SELECT * FROM users WHERE company_id = ?",
+    [company_id],
+    (err, results) => {
+      if (err) {
+        return res.status(500).json({
+          error: err.message
+        });
+      }
+
+      res.json(results);
+    }
+  );
+});
+
+// REGISTER COMPANY
+app.post("/api/registerCompany", (req, res) => {
+
+  const {
+    company_name,
+    email,
+    password,
+    phone_number,
+    address
+  } = req.body;
+
+  db.query(
+    `INSERT INTO companies
+    (company_name, email, password, phone_number, address)
+     VALUES (?, ?, ?, ?, ?)`,
+    [
+      company_name,
+      email,
+      password,
+      phone_number,
+      address
+    ],
+    (err, result) => {
+
+      if (err) {
+        return res.status(500).json({
+          error: err.message
+        });
+      }
+
+      res.json({
+        id: result.insertId,
+        company_name,
+        email,
+        password,
+        phone_number,
+        address
+      });
+    }
+  );
+});
+
+
+
 /* =========================
    AUTH
 ========================= */
-
 // REGISTER
 app.post("/api/register", (req, res) => {
 
@@ -62,19 +123,21 @@ app.post("/api/register", (req, res) => {
     username,
     email,
     password,
-    role_id
+    role_id,
+    company_id
   } = req.body;
 
   db.query(
     `INSERT INTO users 
-    (full_name, username, email, password, role_id)
-     VALUES (?, ?, ?, ?, ?)`,
+    (full_name, username, email, password, role_id, company_id)
+     VALUES (?, ?, ?, ?, ?, ?)`,
     [
       full_name,
       username,
       email,
       password,
-      role_id
+      role_id,
+      company_id
     ],
     (err, result) => {
 
@@ -90,7 +153,8 @@ app.post("/api/register", (req, res) => {
         username,
         email,
         password,
-        role_id
+        role_id,
+        company_id
       });
     }
   );
@@ -113,6 +177,40 @@ app.post("/api/login", (req, res) => {
      JOIN roles r ON u.role_id = r.id
      WHERE u.username = ? AND u.password = ?`,
     [username, password],
+    (err, results) => {
+
+      if (err) {
+        return res.status(500).json({
+          error: err.message
+        });
+      }
+
+      if (results.length === 0) {
+        return res.status(401).json({
+          message: "Login gagal"
+        });
+      }
+
+      res.json(results[0]);
+    }
+  );
+});
+
+// LOGIN
+app.post("/api/loginCompany", (req, res) => {
+
+  const { email, password } = req.body;
+
+  db.query(
+    `SELECT 
+      id
+      company_name,
+      email,
+      phone_number,
+      address
+     FROM companies
+     WHERE email = ? AND password = ?`,
+    [email, password],
     (err, results) => {
 
       if (err) {

@@ -1,36 +1,20 @@
-const mysql = require("mysql2");
+const mysql = require("mysql2/promise");
 
-const db = mysql.createConnection({
+const dbConfig = {
   host: "localhost",
   user: "root",
   password: "",
-});
-
-const initDb = () => {
-  return new Promise((resolve, reject) => {
-    db.connect((err) => {
-      if (err) {
-        console.error("Gagal menyambung ke MySQL:", err.message);
-        return reject(err);
-      }
-      console.log("Terhubung ke MySQL.");
-
-      db.query("CREATE DATABASE IF NOT EXISTS proyek_mocom", (err) => {
-        if (err) {
-          console.error("Gagal membuat DB:", err.message);
-          return reject(err);
-        }
-
-        db.changeUser({ database: "proyek_mocom" }, (err) => {
-          if (err) {
-            console.error("Gagal menggunakan DB:", err.message);
-            return reject(err);
-          }
-          resolve();
-        });
-      });
-    });
-  });
 };
 
-module.exports = { db, initDb };
+const initDb = async () => {
+  const db = await mysql.createConnection(dbConfig);
+
+  console.log("Terhubung ke MySQL.");
+
+  await db.query("CREATE DATABASE IF NOT EXISTS proyek_mocom");
+  await db.query("USE proyek_mocom");
+
+  return db;
+};
+
+module.exports = { initDb };
