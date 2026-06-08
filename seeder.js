@@ -22,7 +22,8 @@ const runSeeder = async () => {
       [[
         ["admin"],
         ["staff"],
-        ["member"]
+        ["member"],
+        ["superadmin"]
       ]]
     );
 
@@ -70,7 +71,7 @@ const runSeeder = async () => {
       CREATE TABLE IF NOT EXISTS users (
         id INT AUTO_INCREMENT PRIMARY KEY,
         role_id INT NOT NULL,
-        company_id INT NOT NULL,
+        company_id INT,
         full_name VARCHAR(100) NOT NULL,
         username VARCHAR(50) UNIQUE NOT NULL,
         email VARCHAR(100) UNIQUE NOT NULL,
@@ -99,7 +100,10 @@ const runSeeder = async () => {
         [2, 2, "Rina Putri", "rina", "rina@sejahtera.com", "123456"],
 
         // Member contoh
-        [3, 1, "Guest User", "guest", "guest@mail.com", "123456"]
+        [3, 1, "Guest User", "guest", "guest@mail.com", "123456"],
+
+        //Superadmin
+        [4, , "Super Admin", "superadmin", "superadmin@mail.com", "123456"]
       ]]
     );
 
@@ -182,14 +186,16 @@ const runSeeder = async () => {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (assignment_id) REFERENCES assignments(id) ON DELETE CASCADE
       )
-    `);
+  `);
 
+    // 3. SUNTIK MOCK DATA MENGGUNAKAN TANGGAL DINAMIS (Kebutuhan Monitor PDF Hari Ini)
+    // Menggunakan fungsi bawaan SQL (CURDATE()) agar otomatis terhitung sebagai hari ini
     await db.query(`
       INSERT INTO attendances (assignment_id, check_in, check_out, status, sync_status)
       VALUES 
-      (1, '2025-01-01 08:05:00', '2025-01-01 12:00:00', 'present', 'synced'),
-      (2, '2025-01-02 22:10:00', NULL, 'late', 'pending')
-    `);
+      (1, CONCAT(CURDATE(), ' 08:05:00'), CONCAT(CURDATE(), ' 12:00:00'), 'present', 'synced'),
+      (2, CONCAT(CURDATE(), ' 22:10:00'), NULL, 'late', 'pending')
+  `);
 
     /* =========================
        NOTIFICATIONS
@@ -263,22 +269,71 @@ const runSeeder = async () => {
       )
     `);
 
+    // =========================================================================
+    // QUERY PEMBUATAN TABEL REPLACEMENTS (TARUH DI DALAM initDb() APP.JS)
+    // =========================================================================
+
+    console.log("⏳ Memeriksa keabsahan struktur tabel database pusat...");
+
     await db.execute(`
       CREATE TABLE IF NOT EXISTS replacements (
         id INT AUTO_INCREMENT PRIMARY KEY,
         assignment_id INT NOT NULL,
         requested_by INT NOT NULL,
-        replacement_user_id INT,
-        reason TEXT,
-        status ENUM('pending','approved','rejected') DEFAULT 'pending',
-        approved_by INT,
+        replacement_user_id INT NULL,
+        reason TEXT NOT NULL,
+        is_valid TINYINT(1) DEFAULT 0,  -- 1 = Valid (Disetujui AI), 0 = Tidak Valid (Ditolak AI)
+        ai_reason TEXT NULL,            -- Menyimpan kalimat argumen logis dari Gemini REST API
+        status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+        approved_by INT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        
+        -- Mengunci Relasi Data (Foreign Key) agar Integritas Database Terjaga
         FOREIGN KEY (assignment_id) REFERENCES assignments(id) ON DELETE CASCADE,
-        FOREIGN KEY (requested_by) REFERENCES users(id),
-        FOREIGN KEY (replacement_user_id) REFERENCES users(id),
-        FOREIGN KEY (approved_by) REFERENCES users(id)
+        FOREIGN KEY (requested_by) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (replacement_user_id) REFERENCES users(id) ON DELETE SET NULL,
+        FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL
       )
     `);
+
+    console.log("✅ Tabel 'replacements' siap digunakan!");
+
+    // =========================================================================
+    // MOCK DATA SUNTIKAN: SIMULASI HASIL EVALUASI GEMINI AI (Untuk Mengisi Tab Website)
+    // =========================================================================
+
+    // 1. Pastikan data transaksi user & assignment penunjang sudah ada agar tidak error Foreign Key
+    await db.query(`
+    INSERT IGNORE INTO users (id, full_name, username, email, password, role_id, company_id) VALUES
+    (2, 'Andi Wijaya', 'andi_wijaya', 'andi@majujaya.com', '123456', 2, 1),
+    (4, 'Siti Rahma', 'siti_rahma', 'siti@majujaya.com', '123456', 2, 1)
+  `);
+
+    // 2. Suntik Data Riwayat Pengajuan Izin Pasca-Saringan AI ke tabel Replacements
+    await db.query(`
+    INSERT INTO replacements 
+    (assignment_id, requested_by, reason, is_valid, ai_reason, status)
+    VALUES 
+    (
+      1, 
+      2,
+      'Mohon maaf Pak Budi, saya izin tidak bisa menjaga shift praktikum hari ini karena mendadak mengalami kecelakaan sepeda motor saat menuju kampus dan sekarang sedang berada di ruang UGD RS Medika.',
+      1, 
+      'Alasan sangat darurat dan valid. Mengalami kecelakaan fisik di jalan menuju tempat kerja masuk ke dalam kategori force majeure yang mendesak, sehingga sangat direkomendasikan untuk disetujui.',
+      'pending'
+    ),
+    (
+      2, 
+      4, 
+      'Izin titip shift ya pak, saya bangunnya kesiangan karena tadi malam habis nonton konser musik sampai subuh jadi badan masih lemas sekali untuk ke lab.',
+      0, 
+      'Alasan tidak valid. Kesiangan akibat aktivitas hiburan pribadi (nonton konser) di luar jam kerja tidak memenuhi standar kedaruratan profesional instansi.',
+      'pending'
+    )
+  `);
+
+    console.log("🚀 Sukses menyuntikkan data evaluasi Gemini AI langsung ke tabel replacements!");
+    console.log("🚀 Semua data tiruan (Absensi & Pengajuan Izin AI) berhasil disuntikkan langsung ke database!");
 
     console.log("SEEDING SELESAI - SEMUA DATA MASUK!");
 
