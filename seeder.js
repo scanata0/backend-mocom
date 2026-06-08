@@ -104,27 +104,30 @@ const runSeeder = async () => {
     );
 
     /* =========================
-       SCHEDULES
+          SCHEDULES
     ========================= */
     await db.execute(`
       CREATE TABLE IF NOT EXISTS schedules (
         id INT AUTO_INCREMENT PRIMARY KEY,
         created_by INT NOT NULL,
+        company_id INT NOT NULL, -- Kolom baru untuk referensi perusahaan
         title VARCHAR(150) NOT NULL,
         description TEXT,
         start_time DATETIME NOT NULL,
         end_time DATETIME NOT NULL,
         location VARCHAR(150),
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (created_by) REFERENCES users(id)
+        FOREIGN KEY (created_by) REFERENCES users(id),
+        FOREIGN KEY (company_id) REFERENCES companies(id) -- Menghubungkan ke tabel companies
       )
     `);
 
     await db.query(
-      "INSERT INTO schedules (created_by, title, description, start_time, end_time, location) VALUES ?",
+      "INSERT INTO schedules (created_by, company_id, title, description, start_time, end_time, location) VALUES ?",
       [[
         [
-          1,
+          1, 
+          1, 
           "Morning Shift",
           "Daily Operations Support",
           "2025-01-01 08:00:00",
@@ -132,7 +135,8 @@ const runSeeder = async () => {
           "Office A"
         ],
         [
-          3,
+          3, 
+          1,
           "Server Maintenance",
           "Weekly backend maintenance",
           "2025-01-02 22:00:00",

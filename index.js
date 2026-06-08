@@ -173,6 +173,7 @@ app.post("/api/login", async (req, res) => {
     const [results] = await db.query(
       `SELECT
         u.id,
+        u.company_id,
         u.full_name,
         u.username,
         u.email,
@@ -479,6 +480,103 @@ app.get("/api/getAllSchedules", (req, res) => {
       res.json(results);
     }
   );
+});
+
+app.get("/api/getSchedulesByCompanyId/:company_id", async (req, res) => {
+  const timestamp = new Date().toLocaleString("id-ID");
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+  
+  // Tangkap company_id dari parameter URL
+  const companyId = req.params.company_id;
+
+  console.log(`\n[${timestamp}] 📥 GET Request masuk ke /api/getSchedulesByCompanyId/${companyId}`);
+  console.log(`[${timestamp}] 🖥️  Dipanggil oleh IP: ${clientIp}`);
+
+  // Validasi jika companyId bukan angka atau tidak valid
+  if (!companyId || isNaN(companyId)) {
+    console.log(`[${timestamp}] ⚠️  Request ditolak: Company ID tidak valid.`);
+    return res.status(400).json({
+      message: "Company ID tidak valid atau harus berupa angka."
+    });
+  }
+
+  try {
+    // Jalankan query MySQL untuk memfilter jadwal berdasarkan company_id
+    // Kolom-kolom di-select agar namanya pas dengan variabel di ScheduleJson Android
+    const [results] = await db.query(
+      `SELECT *
+       FROM schedules 
+       WHERE company_id = ? 
+       ORDER BY start_time ASC`,
+      [companyId]
+    );
+
+    // Kirim response data berupa Array/List (meskipun datanya kosong [])
+    // Hal ini agar di sisi Android (Retrofit) tidak memicu error parsing List<ScheduleJson>
+    console.log(`[${timestamp}] 🚀 Sukses menarik data. Menemukan ${results.length} jadwal.`);
+    
+    if (results.length > 0) {
+      console.table(results); // Menampilkan data tabel di terminal server secara rapi
+    }
+
+    res.json(results);
+
+  } catch (err) {
+    console.error(`[${timestamp}] ❌ Database Error:`, err.message);
+    res.status(500).json({
+      error: "Terjadi kesalahan internal pada server database.",
+      details: err.message
+    });
+  }
+});
+
+// === UPDATE (EDIT) SCHEDULE BY ID ===
+app.put("/api/updateSchedule/:id", async (req, res) => {
+  const timestamp = new Date().toLocaleString("id-ID");
+  const scheduleId = req.params.id;
+
+  // Tangkap data request body dari Android
+  const { created_by, company_id, title, description, start_time, end_time, location } = req.body;
+
+  console.log(`\n[${timestamp}] 📝 PUT Request masuk ke /api/updateSchedule/${scheduleId}`);
+
+  try {
+    // Jalankan perintah UPDATE SQL
+    const [result] = await db.query(
+      `UPDATE schedules 
+       SET 
+         created_by = ?, 
+         company_id = ?, 
+         title = ?, 
+         description = ?, 
+         start_time = ?, 
+         end_time = ?, 
+         location = ? 
+       WHERE id = ?`,
+      [created_by, company_id, title, description, start_time, end_time, location, scheduleId]
+    );
+
+    // Jika id jadwal tidak ditemukan di tabel database
+    if (result.affectedRows === 0) {
+      console.log(`[${timestamp}] ⚠️ Gagal update: Jadwal ID ${scheduleId} tidak ditemukan.`);
+      return res.status(404).json({
+        message: `Gagal memperbarui, jadwal dengan ID ${scheduleId} tidak ditemukan.`
+      });
+    }
+
+    console.log(`[${timestamp}] ✅ Sukses memperbarui jadwal ID: ${scheduleId}`);
+    res.json({
+      message: "Jadwal berhasil diperbarui secara sukses!",
+      id: scheduleId
+    });
+
+  } catch (err) {
+    console.error(`[${timestamp}] ❌ Database Error:`, err.message);
+    res.status(500).json({
+      error: "Terjadi gangguan internal saat mengupdate data database.",
+      details: err.message
+    });
+  }
 });
 
 /* =========================
@@ -900,8 +998,13 @@ initDb()
 
     db = connection;
 
-    app.listen(PORT, () => {
-      console.log(`Server running at http://localhost:${PORT}`);
+    // 💡 PERBAIKAN: Tambahkan '0.0.0.0' sebagai parameter host sebelum callback function
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`======================================================`);
+      console.log(`✅ EduStaff Pro Server is successfully running!`);
+      console.log(`🏠 Local access  : http://localhost:${PORT}`);
+      console.log(`🌐 Network access: Terbuka untuk semua IP Jaringan Wi-Fi`);
+      console.log(`======================================================`);
     });
 
   })
