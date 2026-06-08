@@ -6,15 +6,10 @@ const dbConfig = {
   password: "",
 };
 
-<<<<<<< Updated upstream
-const initDb = async () => {
-  const db = await mysql.createConnection(dbConfig);
-=======
 let db;
 
 const initDb = async () => {
   db = await mysql.createConnection(dbConfig);
->>>>>>> Stashed changes
 
   console.log("Terhubung ke MySQL.");
 
@@ -24,11 +19,7 @@ const initDb = async () => {
   return db;
 };
 
-<<<<<<< Updated upstream
-module.exports = { initDb };
-=======
 module.exports = {
   initDb,
   getDb: () => db
 };
->>>>>>> Stashed changes

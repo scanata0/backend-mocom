@@ -165,7 +165,7 @@ app.post("/api/register", (req, res) => {
 // LOGIN
 app.post("/api/login", async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, username, password } = req.body;
 
     console.log("EMAIL =", email);
     console.log("PASSWORD =", password);
@@ -178,8 +178,8 @@ app.post("/api/login", async (req, res) => {
         u.email,
         u.role_id
       FROM users u
-      WHERE u.email = ? AND u.password = ?`,
-      [email, password]
+      WHERE (u.email = ? OR u.username = ?) AND u.password = ?`,
+      [email, username, password]
     );
 
     if (results.length === 0) {
