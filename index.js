@@ -1,8 +1,10 @@
 const express = require("express");
 const cors = require("cors");
-const { db, initDb } = require("./db");
+const { initDb } = require("./db");
 
 const app = express();
+
+let db;
 
 app.use(cors());
 app.use(express.json());
@@ -161,22 +163,56 @@ app.post("/api/register", (req, res) => {
 });
 
 // LOGIN
-app.post("/api/login", (req, res) => {
+app.post("/api/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
 
-  const { username, password } = req.body;
+    console.log("EMAIL =", email);
+    console.log("PASSWORD =", password);
+
+    const [results] = await db.query(
+      `SELECT
+        u.id,
+        u.full_name,
+        u.username,
+        u.email,
+        u.role_id
+      FROM users u
+      WHERE u.email = ? AND u.password = ?`,
+      [email, password]
+    );
+
+    if (results.length === 0) {
+      return res.status(401).json({
+        message: "Login gagal"
+      });
+    }
+
+    res.json(results[0]);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      error: err.message
+    });
+  }
+});
+
+// LOGIN
+app.post("/api/loginCompany", (req, res) => {
+
+  const { email, password } = req.body;
 
   db.query(
     `SELECT 
-      u.id,
-      u.full_name,
-      u.username,
-      u.email,
-      u.role_id,
-      r.role_name
-     FROM users u
-     JOIN roles r ON u.role_id = r.id
-     WHERE u.username = ? AND u.password = ?`,
-    [username, password],
+      id
+      company_name,
+      email,
+      phone_number,
+      address
+     FROM companies
+     WHERE email = ? AND password = ?`,
+    [email, password],
     (err, results) => {
 
       if (err) {
@@ -860,10 +896,14 @@ app.get("/api/getAllAnnouncements", (req, res) => {
 const PORT = 3000;
 
 initDb()
-  .then(() => {
+  .then((connection) => {
+
+    db = connection;
+
     app.listen(PORT, () => {
       console.log(`Server running at http://localhost:${PORT}`);
     });
+
   })
   .catch((err) => {
     console.error("Server error:", err);
