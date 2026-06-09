@@ -7,8 +7,12 @@
 
   let db;
 
-  app.use(cors());
+  app.use(cors({
+      origin: 'http://127.0.0.1:8000',
+      credentials: true
+  }));
   app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
 
   /* =========================
     ROLES
@@ -159,16 +163,64 @@
     }
   });
 
-  app.get("/api/getAllCompanies", (req, res) => {
-    db.query("SELECT id, company_name, email, phone_number, address FROM companies", (err, results) => {
-      if (err) {
-        return res.status(500).json({ error: err.message });
-      }
-      res.json(results);
-    });
-  });
 
 
+// Pastikan rute ini ada di dalam file index.js Express kamu
+app.get("/api/getAllCompanies", async (req, res) => {
+  try {
+    const [results] = await db.query("SELECT id, company_name, email, phone_number, address FROM companies");
+    return res.json(results);
+  } catch (err) {
+    console.error("❌ ERROR pada getAllCompanies:", err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// 1. ENDPOINT UNTUK MELIHAT STAFF BERDASARKAN COMPANY
+app.get("/api/getStaffByCompany/:company_id", async (req, res) => {
+  try {
+    const { company_id } = req.params;
+    const [rows] = await db.query(
+      "SELECT id, full_name, email, role_id FROM users WHERE company_id = ? AND role_id = 2", // role_id 2 = Staff
+      [parseInt(company_id)]
+    );
+    return res.json(rows);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// 2. ENDPOINT SUPERADMIN MENAMBAHKAN STAFF KE COMPANY TERTENTU
+7// 🛠️ PASTIKAN RUTE INI DITULIS SEPERTI INI DAN DILETAKKAN DI AREA BEBAS (TIDAK DI DALAM ROUTER GRUP LAIN)
+app.post("/api/superadmin/addStaff", async (req, res) => {
+  // LOG PALING ATAS (Wajib muncul jika pintu rute ini ketuk)
+  console.log("🌐 [NETWORK] Ada request POST masuk ke /api/superadmin/addStaff!");
+  console.log("📦 Body Mentah yang Diterima:", req.body);
+
+  try {
+    const { company_id, full_name, email, password} = req.body;
+
+    if (!company_id || !full_name || !email || !password) {
+      console.warn("⚠️ Gagal validasi: Ada parameter wajib yang kosong.");
+      return res.status(400).json({ success: false, error: "Parameter data wajib diisi." });
+    }
+
+    const usernameDefault = email.split('@')[0];
+
+    const [result] = await db.query(
+      `INSERT INTO users (company_id, full_name, username, email, password, role_id) 
+       VALUES (?, ?, ?, ?, ?, 2)`,
+      [parseInt(company_id), full_name, usernameDefault, email, password]
+    );
+
+    console.log(`🚀 [BACKDOOR SUCCESS] Staff baru dibuat dengan ID User #${result.insertId}`);
+    return res.json({ success: true, message: "Staff berhasil disuntik masuk oleh Pusat!" });
+
+  } catch (err) {
+    console.error("❌ ERROR internal SQL pada superadmin addStaff:", err.message);
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
 
   /* =========================
     AUTH
@@ -471,131 +523,134 @@
     SCHEDULES
   ========================= */
 
-  app.post("/api/insertSchedules", (req, res) => {
-    const {
+app.post("/api/insertSchedules", async (req, res) => {
+  const timestamp = new Date().toLocaleString("id-ID");
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+
+  // Menangkap request body dari Laravel Form (Ditambah company_id untuk Multi-Tenant)
+  const { company_id, created_by, title, description, start_time, end_time, location } = req.body;
+
+  console.log(`\n[${timestamp}] 📥 POST Request masuk ke /api/insertSchedules`);
+  console.log(`[${timestamp}] 🖥️  Dipanggil oleh IP: ${clientIp}`);
+  console.log(`[${timestamp}] 📦 Payload Data Custom Shift:`, req.body);
+
+  // Validasi parameter utama agar database tidak throw null error
+  if (!company_id || !created_by || !title || !start_time || !end_time) {
+    return res.status(400).json({ success: false, message: "Parameter utama tidak boleh kosong!" });
+  }
+
+  try {
+    // 🛠️ HITUNG DURASI OTOMATIS: Menghitung selisih jam menggunakan fungsi bawaan MySQL
+    const [durationResult] = await db.query(
+      "SELECT TIMESTAMPDIFF(HOUR, CAST(? AS TIME), CAST(? AS TIME)) as diff",
+      [start_time, end_time]
+    );
+    
+    let duration = durationResult[0] ? parseInt(durationResult[0].diff) : 0;
+    
+    // Proteksi penanganan jika shift malam melewati pergantian hari (Contoh masuk 22:00 - pulang 06:00 pagi)
+    if (duration <= 0) { 
+      duration += 24; 
+    }
+
+    // Eksekusi insert ke tabel database terstruktur baru
+    const [result] = await db.query(
+      `INSERT INTO schedules 
+       (company_id, created_by, title, description, start_time, end_time, duration_hours, location) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [parseInt(company_id), parseInt(created_by), title, description || null, start_time, end_time, duration, location || "Default Area"]
+    );
+
+    console.log(`[${timestamp}] 🚀 [SHIFT SUCCESS] Blueprint Shift #${result.insertId} disimpan dengan durasi ${duration} Jam.`);
+
+    return res.json({
+      id: result.insertId,
+      company_id,
       created_by,
       title,
       description,
       start_time,
       end_time,
+      duration_hours: duration,
       location
-    } = req.body;
+    });
 
-    db.query(
-      `INSERT INTO schedules 
-      (created_by, title, description, start_time, end_time, location) 
-      VALUES (?, ?, ?, ?, ?, ?)`,
-      [
-        created_by,
-        title,
-        description,
-        start_time,
-        end_time,
-        location
-      ],
-      (err, result) => {
-        if (err) {
-          return res.status(500).json({
-            error: err.message
-          });
-        }
+  } catch (err) {
+    console.error(`[${timestamp}] ❌ Database Error:`, err.message);
+    return res.status(500).json({ error: "Terjadi kesalahan saat menyimpan master shift.", details: err.message });
+  }
+});
 
-        res.json({
-          id: result.insertId,
-          created_by,
-          title,
-          description,
-          start_time,
-          end_time,
-          location
-        });
-      }
+  app.get("/api/getAllSchedules", async (req, res) => {
+  const timestamp = new Date().toLocaleString("id-ID");
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+
+  console.log(`\n[${timestamp}] 📥 GET Request masuk ke /api/getAllSchedules`);
+  console.log(`[${timestamp}] 🖥️  Dipanggil oleh IP: ${clientIp}`);
+
+  try {
+    // 🛠️ DIUBAH MENJADI ASYNC/AWAIT: Menggunakan TIME_FORMAT agar Android Retrofit aman membaca string jam
+    const [results] = await db.query(
+      `SELECT id, company_id, created_by, title, description, 
+              TIME_FORMAT(start_time, '%H:%i') as jam_masuk, 
+              TIME_FORMAT(end_time, '%H:%i') as jam_pulang, 
+              duration_hours, location, created_at 
+       FROM schedules`
     );
-  });
 
-  app.get("/api/getAllSchedules", (req, res) => {
-    const timestamp = new Date().toLocaleString("id-ID");
-    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+    console.log(`[${timestamp}] 🚀 Sukses mengambil ${results.length} data dari database.`);
+    console.log(`[${timestamp}] 📋 DAFTAR DATA YANG DIKIRIM KE ANDROID / WEB:`);
 
-    console.log(`\n[${timestamp}] 📥 GET Request masuk ke /api/getAllSchedules`);
-    console.log(`[${timestamp}] 🖥️  Dipanggil oleh IP: ${clientIp}`);
+    if (results.length === 0) {
+      console.log(`[${timestamp}] ⚠️  Tabel kosong, mengirim array kosong [].`);
+    } else {
+      console.table(results);
+    }
 
-    db.query(
-      "SELECT * FROM schedules",
-      (err, results) => {
-        if (err) {
-          console.error(`[${timestamp}] ❌ Database Error:`, err.message);
+    return res.json(results);
 
-          return res.status(500).json({
-            error: err.message
-          });
-        }
-
-        // === PERBAIKAN LOG UNTUK MENAMPILKAN SEMUA DATA ===
-        console.log(`[${timestamp}] 🚀 Sukses mengambil ${results.length} data dari database.`);
-        console.log(`[${timestamp}] 📋 DAFTAR DATA YANG DIKIRIM KE ANDROID:`);
-
-        if (results.length === 0) {
-          console.log(`[${timestamp}] ⚠️  Tabel kosong, mengirim array kosong [].`);
-        } else {
-          // Opsi 1: Cetak bentuk Tabel rapi di terminal (Sangat direkomendasikan untuk debugging)
-          console.table(results);
-
-          // Opsi 2: Jika ingin melihat dalam bentuk format JSON teks mentah murni:
-          // console.log(JSON.stringify(results, null, 2));
-        }
-        // ==================================================
-
-        res.json(results);
-      }
-    );
-  });
+  } catch (err) {
+    console.error(`[${timestamp}] ❌ Database Error:`, err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
 
 app.get("/api/getSchedulesByCompanyId/:company_id", async (req, res) => {
   const timestamp = new Date().toLocaleString("id-ID");
   const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-  
-  // Tangkap company_id dari parameter URL
   const companyId = req.params.company_id;
 
   console.log(`\n[${timestamp}] 📥 GET Request masuk ke /api/getSchedulesByCompanyId/${companyId}`);
   console.log(`[${timestamp}] 🖥️  Dipanggil oleh IP: ${clientIp}`);
 
-  // Validasi jika companyId bukan angka atau tidak valid
   if (!companyId || isNaN(companyId)) {
     console.log(`[${timestamp}] ⚠️  Request ditolak: Company ID tidak valid.`);
-    return res.status(400).json({
-      message: "Company ID tidak valid atau harus berupa angka."
-    });
+    return res.status(400).json({ message: "Company ID tidak valid atau harus berupa angka." });
   }
 
   try {
-    // Jalankan query MySQL untuk memfilter jadwal berdasarkan company_id
-    // Kolom-kolom di-select agar namanya pas dengan variabel di ScheduleJson Android
+    // 🛠️ DIOPTIMALKAN: Menggunakan format data yang ramah untuk view dashboard blade dan Retrofit Android Json
     const [results] = await db.query(
-      `SELECT *
+      `SELECT id, company_id, created_by, title, description,
+              TIME_FORMAT(start_time, '%H:%i') as jam_masuk, 
+              TIME_FORMAT(end_time, '%H:%i') as jam_pulang, 
+              duration_hours, location, created_at
        FROM schedules 
        WHERE company_id = ? 
        ORDER BY start_time ASC`,
-      [companyId]
+      [parseInt(companyId)]
     );
 
-    // Kirim response data berupa Array/List (meskipun datanya kosong [])
-    // Hal ini agar di sisi Android (Retrofit) tidak memicu error parsing List<ScheduleJson>
-    console.log(`[${timestamp}] 🚀 Sukses menarik data. Menemukan ${results.length} jadwal.`);
-    
-    if (results.length > 0) {
-      console.table(results); // Menampilkan data tabel di terminal server secara rapi
+    console.log(`[${timestamp}] 🚀 Sukses menarik data. Menemukan ${results.length} blueprint shift.`);
+    if (results.length > 0) { 
+        console.table(results); 
     }
 
-    res.json(results);
+    return res.json(results);
 
   } catch (err) {
     console.error(`[${timestamp}] ❌ Database Error:`, err.message);
-    res.status(500).json({
-      error: "Terjadi kesalahan internal pada server database.",
-      details: err.message
-    });
+    return res.status(500).json({ error: "Terjadi kesalahan internal pada server database.", details: err.message });
   }
 });
 
@@ -603,14 +658,22 @@ app.get("/api/getSchedulesByCompanyId/:company_id", async (req, res) => {
 app.put("/api/updateSchedule/:id", async (req, res) => {
   const timestamp = new Date().toLocaleString("id-ID");
   const scheduleId = req.params.id;
-
-  // Tangkap data request body dari Android
   const { created_by, company_id, title, description, start_time, end_time, location } = req.body;
 
   console.log(`\n[${timestamp}] 📝 PUT Request masuk ke /api/updateSchedule/${scheduleId}`);
 
   try {
-    // Jalankan perintah UPDATE SQL
+    // 🛠️ HITUNG ULANG DURASI TERBARU SAAT PROSES UPDATE BERLANGSUNG
+    const [durationResult] = await db.query(
+      "SELECT TIMESTAMPDIFF(HOUR, CAST(? AS TIME), CAST(? AS TIME)) as diff",
+      [start_time, end_time]
+    );
+    let duration = durationResult[0] ? parseInt(durationResult[0].diff) : 0;
+    if (duration <= 0) { 
+        duration += 24; 
+    }
+
+    // Jalankan perintah UPDATE SQL menyertakan kolom duration_hours yang baru
     const [result] = await db.query(
       `UPDATE schedules 
        SET 
@@ -620,31 +683,23 @@ app.put("/api/updateSchedule/:id", async (req, res) => {
          description = ?, 
          start_time = ?, 
          end_time = ?, 
+         duration_hours = ?,
          location = ? 
        WHERE id = ?`,
-      [created_by, company_id, title, description, start_time, end_time, location, scheduleId]
+      [parseInt(created_by), parseInt(company_id), title, description || null, start_time, end_time, duration, location, parseInt(scheduleId)]
     );
 
-    // Jika id jadwal tidak ditemukan di tabel database
     if (result.affectedRows === 0) {
       console.log(`[${timestamp}] ⚠️ Gagal update: Jadwal ID ${scheduleId} tidak ditemukan.`);
-      return res.status(404).json({
-        message: `Gagal memperbarui, jadwal dengan ID ${scheduleId} tidak ditemukan.`
-      });
+      return res.status(404).json({ message: `Gagal memperbarui, jadwal dengan ID ${scheduleId} tidak ditemukan.` });
     }
 
-    console.log(`[${timestamp}] ✅ Sukses memperbarui jadwal ID: ${scheduleId}`);
-    res.json({
-      message: "Jadwal berhasil diperbarui secara sukses!",
-      id: scheduleId
-    });
+    console.log(`[${timestamp}] ✅ Sukses memperbarui jadwal ID: ${scheduleId}. Durasi kerja terkini: ${duration} Jam.`);
+    return res.json({ success: true, message: "Jadwal berhasil diperbarui secara sukses!", id: scheduleId });
 
   } catch (err) {
     console.error(`[${timestamp}] ❌ Database Error:`, err.message);
-    res.status(500).json({
-      error: "Terjadi gangguan internal saat mengupdate data database.",
-      details: err.message
-    });
+    return res.status(500).json({ error: "Terjadi gangguan internal saat mengupdate data database.", details: err.message });
   }
 });
 
@@ -989,6 +1044,68 @@ app.put("/api/updateSchedule/:id", async (req, res) => {
     }
   });
 
+/* ========================================================
+   WEEKLY WORKLOAD MONITORING SYSTEM - FINAL FIXED
+======================================================== */
+app.get("/api/getWeeklyWorkload/:company_id", async (req, res) => {
+  try {
+    const { company_id } = req.params;
+
+    console.log(`\n📊 [WORKLOAD ENGINE] Menghitung akumulasi jam kerja mingguan Company ID #${company_id}`);
+
+    // 1. Ambil daftar semua staff murni khusus perusahaan ini
+    const [staffRows] = await db.query(
+      `SELECT id, full_name, username FROM users 
+       WHERE company_id = ? AND role_id = 2`,
+      [parseInt(company_id)]
+    );
+
+    let overworked = 0;
+    let normal = 0;
+    let underworked = 0;
+    const details = [];
+
+    // 2. Kalkulasi jam kerja riil mingguan masing-masing staff
+    for (let staff of staffRows) {
+      const [attendanceRows] = await db.query(
+        `SELECT IFNULL(SUM(TIMESTAMPDIFF(HOUR, a.check_in, a.check_out)), 0) as total_hours
+         FROM attendances a
+         JOIN assignments am ON a.assignment_id = am.id
+         WHERE am.user_id = ? -- 🛠️ FIXED: Menggunakan nama kolom user_id yang sah di tabel assignments
+           AND a.check_in >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)`,
+        [staff.id]
+      );
+
+      const totalHours = attendanceRows[0] ? parseInt(attendanceRows[0].total_hours) : 0;
+
+      // Klasifikasi batas jam kerja
+      if (totalHours > 45) { overworked++; }
+      else if (totalHours >= 35 && totalHours <= 45) { normal++; }
+      else { underworked++; }
+
+      details.push({
+        id: staff.id,
+        full_name: staff.full_name,
+        username: staff.username,
+        total_hours: totalHours
+      });
+    }
+
+    console.log(`🚀 Sukses kalkulasi beban. Overworked: ${overworked}, Normal: ${normal}, Underworked: ${underworked}`);
+
+    return res.json({
+      overworked,
+      normal,
+      underworked,
+      details: details
+    });
+
+  } catch (err) {
+    console.error("❌ WORKLOAD CALCULATION ERROR:", err.message);
+    return res.status(500).json({ error: "Gagal menghitung jam kerja: " + err.message });
+  }
+});
+
   /* ========================================================
     AI LEAVE VALIDATION - VERSI REST API HTTP MURNI (NO SDK)
   ======================================================== */
@@ -1087,6 +1204,38 @@ app.put("/api/updateSchedule/:id", async (req, res) => {
   }
 });
 
+/* ========================================================
+   REAL-TIME TODAY ATTENDANCE LOG FOR DASHBOARD
+======================================================== */
+app.get("/api/getTodayAttendanceLog/:company_id", async (req, res) => {
+  try {
+    const { company_id } = req.params;
+
+    console.log(`\n🕒 [ATTENDANCE LOG] Menarik data check-in hari ini untuk Company ID #${company_id}`);
+
+    // Query mengambil log masuk staf khusus hari ini
+    const [rows] = await db.query(
+      `SELECT 
+        u.full_name,
+        u.username,
+        s.title as shift_title,
+        TIME(a.check_in) as jam_masuk,
+        IF(a.check_out IS NULL, 'Belum Pulang', TIME(a.check_out)) as jam_keluar
+       FROM attendances a
+       JOIN assignments am ON a.assignment_id = am.id
+       JOIN schedules s ON am.schedule_id = s.id
+       JOIN users u ON am.user_id = u.id
+       WHERE u.company_id = ? AND DATE(a.check_in) = CURDATE()
+       ORDER BY a.check_in DESC`,
+      [parseInt(company_id)]
+    );
+
+    return res.json(rows);
+  } catch (err) {
+    console.error("❌ TODAY LOG ERROR:", err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
 
   /* ========================================================
    ACTION: ADMIN MEMUTUSKAN STATUS PERMOHONAN IZIN (APPROVE / REJECT)
