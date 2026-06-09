@@ -176,19 +176,56 @@ app.get("/api/getAllCompanies", async (req, res) => {
   }
 });
 
-// 1. ENDPOINT UNTUK MELIHAT STAFF BERDASARKAN COMPANY
-app.get("/api/getStaffByCompany/:company_id", async (req, res) => {
+app.get("/api/getUsersByCompanyId/:company_id", async (req, res) => {
+  const timestamp = new Date().toLocaleString("id-ID");
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+  const companyId = req.params.company_id;
+
+  console.log(`\n[${timestamp}] 📥 GET Request masuk ke /api/getUsersByCompanyId/${companyId}`);
+  console.log(`[${timestamp}] 🖥️  Dipanggil oleh IP: ${clientIp}`);
+
+  if (!companyId || isNaN(companyId)) {
+    console.log(`[${timestamp}] ⚠️  Request ditolak: Company ID tidak valid.`);
+    return res.status(400).json({ message: "Company ID tidak valid atau harus berupa angka." });
+  }
+
   try {
-    const { company_id } = req.params;
-    const [rows] = await db.query(
-      "SELECT id, full_name, email, role_id FROM users WHERE company_id = ? AND role_id = 2", // role_id 2 = Staff
-      [parseInt(company_id)]
+    const [results] = await db.query(
+      // 💡 PERHATIKAN TANDA KOMA SETELAH is_active DI BAWAH INI:
+      `SELECT id, role_id, company_id, full_name, username, email, password, is_active,
+        DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at, 
+        DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s') AS updated_at
+       FROM users 
+       WHERE company_id = ? AND role_id = 2
+       ORDER BY created_at ASC`, 
+      [parseInt(companyId)]
     );
-    return res.json(rows);
+
+    console.log(`[${timestamp}] 🚀 Sukses menarik data. Menemukan ${results.length} blueprint user.`);
+    return res.json(results);
+
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    console.error(`[${timestamp}] ❌ Database Error:`, err.message);
+    return res.status(500).json({ error: "Terjadi kesalahan internal pada server database.", details: err.message });
   }
 });
+
+// 1. ENDPOINT UNTUK MELIHAT STAFF BERDASARKAN COMPANY
+// app.get("/api/getUsersByCompanyId/:company_id", async (req, res) => {
+//   try {
+//     const { company_id } = req.params;
+    
+//     // Query SQL kamu sudah sangat bagus & aman dari SQL Injection (menggunakan ?)
+//     const [rows] = await db.query(
+//       "SELECT id, full_name, email, role_id, is_active FROM users WHERE company_id = ? AND role_id = 2", // 💡 Tips: Ikut sertakan is_active untuk badge status di UserAdapter kamu
+//       [parseInt(company_id)]
+//     );
+    
+//     return res.json(rows);
+//   } catch (err) {
+//     return res.status(500).json({ error: err.message });
+//   }
+// });
 
 // 2. ENDPOINT SUPERADMIN MENAMBAHKAN STAFF KE COMPANY TERTENTU
 7// 🛠️ PASTIKAN RUTE INI DITULIS SEPERTI INI DAN DILETAKKAN DI AREA BEBAS (TIDAK DI DALAM ROUTER GRUP LAIN)
@@ -527,20 +564,18 @@ app.post("/api/insertSchedules", async (req, res) => {
   const timestamp = new Date().toLocaleString("id-ID");
   const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
 
-  // Menangkap request body dari Laravel Form (Ditambah company_id untuk Multi-Tenant)
   const { company_id, created_by, title, description, start_time, end_time, location } = req.body;
 
   console.log(`\n[${timestamp}] 📥 POST Request masuk ke /api/insertSchedules`);
   console.log(`[${timestamp}] 🖥️  Dipanggil oleh IP: ${clientIp}`);
-  console.log(`[${timestamp}] 📦 Payload Data Custom Shift:`, req.body);
 
-  // Validasi parameter utama agar database tidak throw null error
   if (!company_id || !created_by || !title || !start_time || !end_time) {
+    console.log(`[${timestamp}] ⚠️  Insert Ditolak: Parameter utama ada yang kosong!`);
     return res.status(400).json({ success: false, message: "Parameter utama tidak boleh kosong!" });
   }
 
   try {
-    // 🛠️ HITUNG DURASI OTOMATIS: Menghitung selisih jam menggunakan fungsi bawaan MySQL
+    // 🛠️ HITUNG DURASI OTOMATIS
     const [durationResult] = await db.query(
       "SELECT TIMESTAMPDIFF(HOUR, CAST(? AS TIME), CAST(? AS TIME)) as diff",
       [start_time, end_time]
@@ -548,12 +583,12 @@ app.post("/api/insertSchedules", async (req, res) => {
     
     let duration = durationResult[0] ? parseInt(durationResult[0].diff) : 0;
     
-    // Proteksi penanganan jika shift malam melewati pergantian hari (Contoh masuk 22:00 - pulang 06:00 pagi)
+    // Proteksi shift malam melewati pergantian hari (misal 22:00 - 06:00)
     if (duration <= 0) { 
       duration += 24; 
     }
 
-    // Eksekusi insert ke tabel database terstruktur baru
+    // Eksekusi insert ke database MySQL
     const [result] = await db.query(
       `INSERT INTO schedules 
        (company_id, created_by, title, description, start_time, end_time, duration_hours, location) 
@@ -561,18 +596,35 @@ app.post("/api/insertSchedules", async (req, res) => {
       [parseInt(company_id), parseInt(created_by), title, description || null, start_time, end_time, duration, location || "Default Area"]
     );
 
-    console.log(`[${timestamp}] 🚀 [SHIFT SUCCESS] Blueprint Shift #${result.insertId} disimpan dengan durasi ${duration} Jam.`);
+    // 💡 TAMPILKAN LOG INSERT BARU SECARA RAPI SEJAJAR
+    console.log("=== BARU DITAMBAHKAN ===");
+    const header = "ID".padEnd(6) + "Comp".padEnd(8) + "User".padEnd(8) + "Title".padEnd(22) + "Mulai".padEnd(10) + "Selesai".padEnd(10) + "Durasi";
+    console.log(header);
+    console.log("-".repeat(header.length + 5));
+    console.log(
+      String(result.insertId).padEnd(6) +
+      String(company_id).padEnd(8) +
+      String(created_by).padEnd(8) +
+      title.padEnd(22) +
+      start_time.padEnd(10) +
+      end_time.padEnd(10) +
+      `${duration} Jam`
+    );
+    console.log("-".repeat(header.length + 5) + "\n");
+
+    console.log(`[${timestamp}] id${result.insertId} disimpan.`);
 
     return res.json({
       id: result.insertId,
-      company_id,
-      created_by,
-      title,
-      description,
-      start_time,
-      end_time,
-      duration_hours: duration,
-      location
+      company_id: parseInt(company_id),
+      created_by: parseInt(created_by),
+      title: title,
+      description: description,
+      start_time: start_time, // Mengembalikan string "HH:mm:ss"
+      end_time: end_time,     // Mengembalikan string "HH:mm:ss"
+      location: location,
+      // 💡 Berikan umpan teks tanggal lengkap tiruan hari ini agar SimpleDateFormat Android sukses membaca datanya
+      created_at: new Date().toISOString().replace('T', ' ').substring(0, 19) 
     });
 
   } catch (err) {
@@ -581,7 +633,7 @@ app.post("/api/insertSchedules", async (req, res) => {
   }
 });
 
-  app.get("/api/getAllSchedules", async (req, res) => {
+app.get("/api/getAllSchedules", async (req, res) => {
   const timestamp = new Date().toLocaleString("id-ID");
   const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
 
@@ -629,12 +681,11 @@ app.get("/api/getSchedulesByCompanyId/:company_id", async (req, res) => {
   }
 
   try {
-    // 🛠️ DIOPTIMALKAN: Menggunakan format data yang ramah untuk view dashboard blade dan Retrofit Android Json
     const [results] = await db.query(
       `SELECT id, company_id, created_by, title, description,
-              TIME_FORMAT(start_time, '%H:%i') as jam_masuk, 
-              TIME_FORMAT(end_time, '%H:%i') as jam_pulang, 
-              duration_hours, location, created_at
+        DATE_FORMAT(start_time, '%Y-%m-%d %H:%i:%s') AS start_time, 
+        DATE_FORMAT(end_time, '%Y-%m-%d %H:%i:%s')   AS end_time,
+        location, created_at
        FROM schedules 
        WHERE company_id = ? 
        ORDER BY start_time ASC`,
@@ -642,8 +693,45 @@ app.get("/api/getSchedulesByCompanyId/:company_id", async (req, res) => {
     );
 
     console.log(`[${timestamp}] 🚀 Sukses menarik data. Menemukan ${results.length} blueprint shift.`);
-    if (results.length > 0) { 
-        console.table(results); 
+    
+    if (results.length > 0) {
+      console.log("\n=== DATA SCHEDULE ===");
+
+      // 💡 PERBAIKAN UTAMA: Ukuran padEnd disesuaikan dengan panjang teks judul header agar tidak luber
+      const header = 
+        "id".padEnd(6) + 
+        "company_id".padEnd(13) + 
+        "user_id".padEnd(13) + 
+        "title".padEnd(25) + 
+        "start_time".padEnd(23) + 
+        "end_time".padEnd(23) + 
+        "location".padEnd(18) + 
+        "created_at";
+      
+      console.log(header);
+      console.log("-".repeat(header.length + 2)); // Garis pembatas otomatis pas sesuai panjang header
+
+      results.forEach(row => {
+        // Konversi tanggal objek Date dari MySQL menjadi format string ringkas (YYYY-MM-DD HH:mm:ss)
+        const tanggalRingkas = row.created_at 
+          ? new Date(row.created_at).toISOString().replace('T', ' ').substring(0, 19)
+          : "-";
+
+        // 💡 BARIS DATA: Angka padEnd disamakan persis dengan konfigurasi Header di atas
+        const barisData = 
+          String(row.id).padEnd(6) + 
+          String(row.company_id).padEnd(13) + 
+          String(row.created_by).padEnd(13) + 
+          (row.title || "").padEnd(25) + 
+          String(row.start_time || "").padEnd(23) + 
+          String(row.end_time || "").padEnd(23) + 
+          (row.location || "Online").padEnd(18) + 
+          tanggalRingkas;
+
+        console.log(barisData);
+      });
+      
+      console.log("-".repeat(header.length + 2) + "\n");
     }
 
     return res.json(results);
