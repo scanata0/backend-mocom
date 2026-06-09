@@ -993,76 +993,99 @@ app.put("/api/updateSchedule/:id", async (req, res) => {
     AI LEAVE VALIDATION - VERSI REST API HTTP MURNI (NO SDK)
   ======================================================== */
   app.post("/api/analyze-leave-request", async (req, res) => {
-    try {
-      const { reason } = req.body;
-      const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+  try {
+    const { reason } = req.body;
 
-      if (!reason) {
-        return res.status(400).json({ success: false, error: "Teks alasan izin tidak boleh kosong." });
-      }
+    if (!reason) {
+      return res.status(400).json({ success: false, error: "Teks alasan izin kosong." });
+    }
 
-      console.log(`\n🤖 [HTTP REST API] Memproses analisis manual via REST murni untuk: "${reason}"`);
+    console.log(`\n🤖 [REST API] Mengevaluasi dokumen alasan: "${reason}"`);
 
-      // PERBAIKAN: Ubah v1 menjadi v1beta agar mendukung penuh properti response_mime_type
-      const GEMINI_URL =
-`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+    const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
-      const systemInstruction = `
-        Anda adalah seorang HRD profesional dan sistem kecerdasan buatan penilai kedaruratan. 
-        Analisis alasan izin kerja/shift staf berikut secara objektif.
-        
-        Aturan Penilaian:
-        - Berikan nilai 1 (Valid) jika alasan berupa: Sakit medis, kecelakaan fisik, keluarga inti tertimpa musibah/meninggal, bencana alam, atau urusan dokumen negara darurat.
-        - Berikan nilai 0 (Tidak Valid) jika alasan berupa: Kesiangan, kelelahan akibat hiburan pribadi (nonton konser, main game), macet biasa, urusan keluarga non-inti yang bisa ditunda, atau malas.
+    const systemInstruction = `
+      Anda adalah HRD senior. Evaluasi alasan izin ini secara objektif.
+      Aturan: Berikan is_valid = 1 jika mendesak (Sakit, Kecelakaan, UGD, Musibah). Berikan is_valid = 0 jika remeh (Kesiangan, malas, urusan pribadi bisa ditunda).
+      WAJIB keluarkan format JSON murni:
+      { "is_valid": 1 atau 0, "ai_reason": "1 kalimat penjelasan Bahasa Indonesia" }
+    `;
 
-        Anda WAJIB memberikan output HANYA dalam format JSON murni seperti struktur di bawah ini tanpa penjelasan teks biasa/markdown di luar JSON:
+    const payloadAnalyze = {
+  contents: [
+    {
+      parts: [
         {
-          "is_valid": 1 atau 0,
-          "ai_reason": "Berikan 1-2 kalimat argumen penjelasan logis dalam Bahasa Indonesia resmi mengapa alasan tersebut valid atau tidak valid."
+          text: `Aturan:\n${systemInstruction}\n\nNilailah teks ini: "${reason}"`
         }
-      `;
+      ]
+    }
+  ],
+  generationConfig: {
+    responseMimeType: "application/json"
+  }
+};
 
-      const payloadAnalyze = {
-        contents: [
-          { 
-            parts: [
-              { text: `Aturan Evaluasi:\n${systemInstruction}\n\nNilailah teks pengajuan izin ini: "${reason}"` } 
-            ] 
-          }
-        ],
-        generation_config: {           
-          response_mime_type: "application/json" // Sekarang 100% didukung karena URL sudah beralih ke v1beta
-        }
-      };
-
-      const apiResponse = await fetch(GEMINI_URL, {
+    let apiResponse;
+    let retries = 3; // Sistem akan otomatis mencoba mengetuk pintu Google hingga 3 kali jika terjadi error 503
+    
+    while (retries > 0) {
+      apiResponse = await fetch(GEMINI_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payloadAnalyze) // ⬅️ Sinkron dengan variabel payload di atas
+        body: JSON.stringify(payloadAnalyze)
       });
 
-      if (!apiResponse.ok) {
-        const errorText = await apiResponse.text();
-        throw new Error(`Google API merespon dengan status ${apiResponse.status}: ${errorText}`);
+      if (apiResponse.status !== 503) {
+        break; // Keluar dari loop jika status bukan 503 (berhasil atau jenis error lain)
       }
 
+      console.warn(`⚠️ Google API sibuk (503). Mencoba ulang dalam 1.5 detik... (Sisa percobaan: ${retries - 1})`);
+      retries--;
+      await new Promise(resolve => setTimeout(resolve, 1500)); // Delay jeda sebelum menembak ulang
+    }
+
+    // JIKA GOOGLE API TERNYATA BENAR-BENAR DOWN (TETAP SIBUK SETELAH 3X RETRY)
+    if (!apiResponse.ok && apiResponse.status === 503) {
+      console.log("fallback 💡 Mengaktifkan sistem penyaringan cadangan internal (HRD Local Engine)...");
+      
+      // Deteksi kata kunci darurat secara manual menggunakan Regex Local Server
+      const kataKunciDarurat = /kecelakaan|sakit|ugd|rs|rumah sakit|dokter|musibah|meninggal|kejang/i;
+      const isValidLocal = kataKunciDarurat.test(reason) ? 1 : 0;
+      const reasonLocal = isValidLocal === 1 
+        ? "Validasi Cadangan: Alasan terdeteksi mengandung unsur kedaruratan medis/force majeure (Disetujui HRD Engine)." 
+        : "Validasi Cadangan: Alasan terdeteksi minim indikasi kedaruratan medis mendesak (Ditinjau Ulang).";
+
+      return res.json({
+        success: true,
+        is_valid: isValidLocal,
+        ai_reason: reasonLocal
+      });
+    }
+
+    // JIKA GOOGLE API MERESPONS DENGAN SUKSES (200 OK)
+    if (apiResponse.ok) {
       const aiDataParsed = await apiResponse.json();
       const rawJsonText = aiDataParsed.candidates[0].content.parts[0].text.trim();
-      const aiResult = JSON.parse(rawJsonText); 
+      const aiResult = JSON.parse(rawJsonText);
 
       console.log("🧠 Hasil Analisis Sukses Berbasis REST:", aiResult);
-
       return res.json({
         success: true,
         is_valid: aiResult.is_valid,
         ai_reason: aiResult.ai_reason
       });
-
-    } catch (err) {
-      console.error("❌ BACKEND ANALYSIS ERROR:", err.message);
-      return res.status(500).json({ success: false, error: "Gagal memproses analisis AI.", details: err.message });
+    } else {
+      const errorText = await apiResponse.text();
+      throw new Error(`Google API merespon dengan status ${apiResponse.status}: ${errorText}`);
     }
-  });
+
+  } catch (err) {
+    console.error("❌ BACKEND ANALYSIS ERROR:", err.message);
+    return res.status(500).json({ success: false, error: "Gagal memproses analisis AI.", details: err.message });
+  }
+});
 
 
   /* ========================================================
