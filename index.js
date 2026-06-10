@@ -25,7 +25,6 @@
       "INSERT INTO roles (role_name) VALUES (?)",
       [role_name],
       (err, result) => {
-
         if (err) {
           return res.status(500).json({
             error: err.message
@@ -41,7 +40,6 @@
   });
 
   app.get("/api/getAllRoles", (req, res) => {
-
     db.query(
       "SELECT * FROM roles",
       (err, results) => {
@@ -142,7 +140,6 @@
   });
 
   // ENDPOINT: MENGAMBIL DETAIL SATU PERUSAHAAN BERDASARKAN ID
-  // ENDPOINT: MENGAMBIL DETAIL SATU PERUSAHAAN BERDASARKAN ID (Async/Await Style)
   app.get("/api/getCompanyDetail/:id", async (req, res) => {
     try {
       const { id } = req.params;
@@ -391,40 +388,6 @@ app.post("/api/superadmin/addStaff", async (req, res) => {
     );
   });
 
-  // LOGIN
-  app.post("/api/loginCompany", (req, res) => {
-
-    const { email, password } = req.body;
-
-    db.query(
-      `SELECT 
-        id
-        company_name,
-        email,
-        phone_number,
-        address
-      FROM companies
-      WHERE email = ? AND password = ?`,
-      [email, password],
-      (err, results) => {
-
-        if (err) {
-          return res.status(500).json({
-            error: err.message
-          });
-        }
-
-        if (results.length === 0) {
-          return res.status(401).json({
-            message: "Login gagal"
-          });
-        }
-
-        res.json(results[0]);
-      }
-    );
-  });
-
   // PROFILE
   app.get("/api/getUserProfile/:id", (req, res) => {
 
@@ -490,39 +453,6 @@ app.post("/api/superadmin/addStaff", async (req, res) => {
     );
   });
 
-  app.get("/api/getAllStaff", (req, res) => {
-    const timestamp = new Date().toLocaleString("id-ID");
-    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-
-    console.log(`\n[${timestamp}] 📥 GET Request masuk ke /api/getStaff`);
-    console.log(`[${timestamp}] 🖥️  Dipanggil oleh IP: ${clientIp}`);
-
-    db.query(
-      "SELECT * FROM users",
-      (err, results) => {
-        if (err) {
-          console.error(`[${timestamp}] ❌ Database Error:`, err.message);
-
-          return res.status(500).json({
-            error: err.message
-          });
-        }
-
-        // === PERBAIKAN LOG UNTUK MENAMPILKAN SEMUA DATA ===
-        console.log(`[${timestamp}] 🚀 Sukses mengambil ${results.length} data dari database.`);
-        console.log(`[${timestamp}] 📋 DAFTAR DATA YANG DIKIRIM KE ANDROID:`);
-
-        if (results.length === 0) {
-          console.log(`[${timestamp}] ⚠️  Tabel kosong, mengirim array kosong [].`);
-        } else {
-          console.table(results);
-        }
-
-        res.json(results);
-      }
-    );
-  });
-
   app.get("/api/getAllMember", (req, res) => {
     const timestamp = new Date().toLocaleString("id-ID");
     const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
@@ -531,7 +461,7 @@ app.post("/api/superadmin/addStaff", async (req, res) => {
     console.log(`[${timestamp}] 🖥️  Dipanggil oleh IP: ${clientIp}`);
 
     db.query(
-      "SELECT * FROM users",
+      "SELECT * FROM users WHERE role_id=2",
       (err, results) => {
         if (err) {
           console.error(`[${timestamp}] ❌ Database Error:`, err.message);
