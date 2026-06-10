@@ -453,6 +453,90 @@ app.post("/api/superadmin/addStaff", async (req, res) => {
     );
   });
 
+  app.get("/api/getAllStaff", (req, res) => {
+    const timestamp = new Date().toLocaleString("id-ID");
+    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+
+    console.log(`\n[${timestamp}] 📥 GET Request masuk ke /api/getStaff`);
+    console.log(`[${timestamp}] 🖥️  Dipanggil oleh IP: ${clientIp}`);
+
+    db.query(
+      "SELECT * FROM users",
+      (err, results) => {
+        if (err) {
+          console.error(`[${timestamp}] ❌ Database Error:`, err.message);
+
+          return res.status(500).json({
+            error: err.message
+          });
+        }
+
+        // === PERBAIKAN LOG UNTUK MENAMPILKAN SEMUA DATA ===
+        console.log(`[${timestamp}] 🚀 Sukses mengambil ${results.length} data dari database.`);
+        console.log(`[${timestamp}] 📋 DAFTAR DATA YANG DIKIRIM KE ANDROID:`);
+
+        if (results.length === 0) {
+          console.log(`[${timestamp}] ⚠️  Tabel kosong, mengirim array kosong [].`);
+        } else {
+          console.table(results);
+        }
+
+        res.json(results);
+      }
+    );
+  });
+
+  // === GET ALL STAFF BY COMPANY ID (ISOLASI MULTI-TENANT & EMERGENCY INTERVENTION) ===
+app.get("/api/getStaffByCompany/:company_id", async (req, res) => {
+  const timestamp = new Date().toLocaleString("id-ID");
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+  
+  // Menangkap parameter company_id dari URL Request
+  const companyId = req.params.company_id;
+
+  console.log(`\n[${timestamp}] 📥 GET Request masuk ke /api/getStaffByCompany/${companyId}`);
+  console.log(`[${timestamp}] 🖥️  Dipanggil oleh IP: ${clientIp}`);
+
+  // Validasi jika parameter companyId tidak valid atau bukan angka
+  if (!companyId || isNaN(companyId)) {
+    console.log(`[${timestamp}] ⚠️  Request ditolak: Company ID tidak valid.`);
+    return res.status(400).json({
+      message: "Company ID tidak valid atau harus berupa angka."
+    });
+  }
+
+  try {
+    // Jalankan query MySQL untuk mengambil seluruh staf/karyawan lapangan (role_id = 2)
+    // yang bernaung di bawah company_id tersebut
+    const [results] = await db.query(
+      `SELECT id, company_id, full_name, username, email, role_id 
+       FROM users 
+       WHERE company_id = ? AND role_id = 2
+       ORDER BY id DESC`,
+      [parseInt(companyId)]
+    );
+
+    console.log(`[${timestamp}] 🚀 Sukses menarik data. Menemukan ${results.length} staf aktif.`);
+    
+    // Cetak visualisasi data berbentuk tabel di terminal Node.js jika data ditemukan
+    if (results.length > 0) {
+      console.table(results);
+    } else {
+      console.log(`[${timestamp}] ⚠️  Tidak ada staf yang terikat pada Company ID #${companyId}`);
+    }
+
+    // Kirim respon murni berupa Array Objek (JSON) ke Laravel Blade / Alpine.js
+    return res.json(results);
+
+  } catch (err) {
+    console.error(`[${timestamp}] ❌ Database Error pada getStaffByCompany:`, err.message);
+    return res.status(500).json({
+      error: "Terjadi kesalahan internal pada server database pusat.",
+      details: err.message
+    });
+  }
+});
+
   app.get("/api/getAllMember", (req, res) => {
     const timestamp = new Date().toLocaleString("id-ID");
     const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
