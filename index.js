@@ -193,7 +193,7 @@ app.get("/api/getUsersByCompanyId/:company_id", async (req, res) => {
         DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at, 
         DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s') AS updated_at
        FROM users 
-       WHERE company_id = ? AND role_id = 2
+       WHERE company_id = ? AND role_id != 1
        ORDER BY created_at ASC`, 
       [parseInt(companyId)]
     );
@@ -537,6 +537,16 @@ app.get("/api/getStaffByCompany/:company_id", async (req, res) => {
   }
 });
 
+app.get("/api/getUserById/:id", async (req, res) => {
+  try {
+    const [rows] = await db.query("SELECT id, company_id, role_id, full_name, username, email, is_active FROM users WHERE id = ?", [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ message: "User tidak ditemukan" });
+    return res.json(rows[0]);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
   app.get("/api/getAllMember", (req, res) => {
     const timestamp = new Date().toLocaleString("id-ID");
     const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
@@ -570,6 +580,145 @@ app.get("/api/getStaffByCompany/:company_id", async (req, res) => {
     );
   });
 
+app.post("/api/insertUser", async (req, res) => {
+  const timestamp = new Date().toLocaleString("id-ID");
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+
+  // 1. Ambil data mentah dari Android Retrofit
+  const { role_id, company_id, full_name, username, email, password, is_active } = req.body;
+
+  console.log(`\n[${timestamp}] 📥 POST Request masuk ke /api/insertUser`);
+  console.log(`[${timestamp}] 🖥️  Dipanggil oleh IP: ${clientIp}`);
+
+  // 2. Validasi parameter inputan
+  if (!company_id || !role_id || !full_name || !username || !email || !password) {
+    console.log(`[${timestamp}] ⚠️  Insert Ditolak: Parameter utama ada yang kosong!`);
+    return res.status(400).json({ success: false, message: "Parameter utama tidak boleh kosong!" });
+  }
+
+  try {
+    // 3. Eksekusi query INSERT data user baru ke database MySQL
+    const [result] = await db.query(
+      `INSERT INTO users 
+       (role_id, company_id, full_name, username, email, password, is_active) 
+       VALUES (?, ?, ?, ?, ?, ?, ?)`, 
+      [
+        parseInt(role_id), 
+        parseInt(company_id), 
+        full_name, 
+        username, 
+        email, 
+        password,
+        parseInt(is_active ?? 1) // Jika Android tidak mengirim parameter is_active, otomatis set 1 (Aktif)
+      ]
+    );
+
+    console.log(`[${timestamp}] ✅ Sukses mendaftarkan User baru dengan ID: ${result.insertId}`);
+
+    // =========================================================================
+    // 💡 PERBAIKAN UTAMA: Kembalikan struktur data User murni ke Android Studio
+    // =========================================================================
+    return res.json({
+      id: result.insertId,
+      company_id: parseInt(company_id),
+      role_id: parseInt(role_id),
+      full_name: full_name,
+      username: username,
+      email: email,
+      password: password, // Tanpa enkripsi/hash sesuai requesmu sebelumnya
+      is_active: parseInt(is_active ?? 1),
+      created_at: new Date().toISOString().replace('T', ' ').substring(0, 19),
+      updated_at: new Date().toISOString().replace('T', ' ').substring(0, 19)
+    });
+
+  } catch (err) {
+    console.error(`[${timestamp}] ❌ Database Error:`, err.message);
+    return res.status(500).json({ 
+      success: false, 
+      error: "Terjadi kesalahan saat menyimpan data pengguna baru.", 
+      details: err.message 
+    });
+  }
+});
+
+app.put("/api/updateUser/:id", async (req, res) => {
+  const timestamp = new Date().toLocaleString("id-ID");
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+  
+  const { role_id, full_name, username, email, is_active } = req.body;
+  const userId = req.params.id;
+
+  console.log(`\n[${timestamp}] 📥 PUT Request masuk ke /api/updateUser/${userId}`);
+  console.log(`[${timestamp}] 🖥️  Dipanggil oleh IP: ${clientIp}`);
+
+  try {
+    // 💡 PERBAIKAN: Ditambahkan `updated_at = NOW()` ke dalam query SQL UPDATE
+    const querySql = `
+      UPDATE users 
+      SET role_id = ?, 
+          full_name = ?, 
+          username = ?, 
+          email = ?, 
+          is_active = ?, 
+          updated_at = NOW() 
+      WHERE id = ?
+    `;
+
+    const [result] = await db.query(querySql, [
+      parseInt(role_id), 
+      full_name, 
+      username, 
+      email, 
+      parseInt(is_active), 
+      parseInt(userId)
+    ]);
+
+    // Jika id tidak ditemukan di database
+    if (result.affectedRows === 0) {
+      console.log(`[${timestamp}] ⚠️  Update Gagal: User ID ${userId} tidak ditemukan.`);
+      return res.status(404).json({ success: false, message: "User tidak ditemukan." });
+    }
+
+    console.log(`[${timestamp}] ✅ Sukses mengupdate data User ID: ${userId}`);
+    return res.sendStatus(200); // Kembalikan status HTTP 200 OK ke Android Studio
+
+  } catch (err) {
+    console.error(`[${timestamp}] ❌ Database Error saat Update:`, err.message);
+    return res.status(500).json({ 
+      success: false, 
+      error: "Terjadi kesalahan saat memperbarui data pengguna.", 
+      details: err.message 
+    });
+  }
+});
+
+app.delete("/api/deleteUser/:id", async (req, res) => {
+  const timestamp = new Date().toLocaleString("id-ID");
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+  const { id } = req.params;
+
+  console.log(`\n[${timestamp}] 🗑️ DELETE Request masuk ke /api/deleteUser/${id}`);
+  console.log(`[${timestamp}] 🖥️  Dipanggil oleh IP: ${clientIp}`);
+
+  try {
+    const [result] = await db.query("DELETE FROM users WHERE id = ?", [parseInt(id)]);
+
+    if (result.affectedRows === 0) {
+      console.log(`[${timestamp}] ⚠️ Delete Ditolak: User ID ${id} tidak ditemukan di database.`);
+      return res.status(404).json({ success: false, message: "User tidak ditemukan." });
+    }
+
+    console.log(`[${timestamp}] 🚀 Sukses menghapus user ID: ${id} dari cloud MySQL.`);
+    
+    // 💡 TIPS RETROFIT: Kirim status 200 OK murni agar Response<Unit> di Android membacanya sebagai sukses
+    return res.status(200).json({ success: true, message: "User berhasil dihapus." });
+
+  } catch (err) {
+    console.error(`[${timestamp}] ❌ Database Error saat Delete:`, err.message);
+    return res.status(500).json({ error: "Gagal menghapus user.", details: err.message });
+  }
+});
+
   /* =========================
     SCHEDULES
   ========================= */
@@ -589,30 +738,29 @@ app.post("/api/insertSchedules", async (req, res) => {
   }
 
   try {
-    // 🛠️ HITUNG DURASI OTOMATIS
-    const [durationResult] = await db.query(
-      "SELECT TIMESTAMPDIFF(HOUR, CAST(? AS TIME), CAST(? AS TIME)) as diff",
-      [start_time, end_time]
-    );
-    
-    let duration = durationResult[0] ? parseInt(durationResult[0].diff) : 0;
-    
-    // Proteksi shift malam melewati pergantian hari (misal 22:00 - 06:00)
-    if (duration <= 0) { 
-      duration += 24; 
-    }
+    // 💡 BAGIAN DURASI SUDAH DIHAPUS TOTAL DI SINI
 
-    // Eksekusi insert ke database MySQL
+    // =========================================================================
+    // 💡 PERBAIKAN UTAMA: Jumlah kolom (7) sekarang PAS dengan tanda tanya (7)
+    // =========================================================================
     const [result] = await db.query(
       `INSERT INTO schedules 
-       (company_id, created_by, title, description, start_time, end_time, duration_hours, location) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [parseInt(company_id), parseInt(created_by), title, description || null, start_time, end_time, duration, location || "Default Area"]
+       (company_id, created_by, title, description, start_time, end_time, location) 
+       VALUES (?, ?, ?, ?, ?, ?, ?)`, // 🟢 Diubah dari 8 menjadi 7 tanda tanya
+      [
+        parseInt(company_id), 
+        parseInt(created_by), 
+        title, 
+        description || null, 
+        start_time, 
+        end_time,
+        location || "Default Area"
+      ]
     );
 
-    // 💡 TAMPILKAN LOG INSERT BARU SECARA RAPI SEJAJAR
+    // 💡 CETAK LOG MONITORING (Tanpa Kolom Durasi)
     console.log("=== BARU DITAMBAHKAN ===");
-    const header = "ID".padEnd(6) + "Comp".padEnd(8) + "User".padEnd(8) + "Title".padEnd(22) + "Mulai".padEnd(10) + "Selesai".padEnd(10) + "Durasi";
+    const header = "ID".padEnd(6) + "Comp".padEnd(8) + "User".padEnd(8) + "Title".padEnd(22) + "Mulai".padEnd(22) + "Selesai";
     console.log(header);
     console.log("-".repeat(header.length + 5));
     console.log(
@@ -620,13 +768,12 @@ app.post("/api/insertSchedules", async (req, res) => {
       String(company_id).padEnd(8) +
       String(created_by).padEnd(8) +
       title.padEnd(22) +
-      start_time.padEnd(10) +
-      end_time.padEnd(10) +
-      `${duration} Jam`
+      start_time.padEnd(22) +
+      end_time
     );
     console.log("-".repeat(header.length + 5) + "\n");
 
-    console.log(`[${timestamp}] id${result.insertId} disimpan.`);
+    console.log(`[${timestamp}] id ${result.insertId} disimpan.`);
 
     return res.json({
       id: result.insertId,
@@ -634,10 +781,9 @@ app.post("/api/insertSchedules", async (req, res) => {
       created_by: parseInt(created_by),
       title: title,
       description: description,
-      start_time: start_time, // Mengembalikan string "HH:mm:ss"
-      end_time: end_time,     // Mengembalikan string "HH:mm:ss"
-      location: location,
-      // 💡 Berikan umpan teks tanggal lengkap tiruan hari ini agar SimpleDateFormat Android sukses membaca datanya
+      start_time: start_time, 
+      end_time: end_time,     
+      location: location || "Default Area",
       created_at: new Date().toISOString().replace('T', ' ').substring(0, 19) 
     });
 
@@ -657,10 +803,10 @@ app.get("/api/getAllSchedules", async (req, res) => {
   try {
     // 🛠️ DIUBAH MENJADI ASYNC/AWAIT: Menggunakan TIME_FORMAT agar Android Retrofit aman membaca string jam
     const [results] = await db.query(
-      `SELECT id, company_id, created_by, title, description, 
-              TIME_FORMAT(start_time, '%H:%i') as jam_masuk, 
-              TIME_FORMAT(end_time, '%H:%i') as jam_pulang, 
-              duration_hours, location, created_at 
+      `SELECT id, company_id, created_by, title, description,
+        DATE_FORMAT(start_time, '%Y-%m-%d %H:%i:%s') AS start_time, 
+        DATE_FORMAT(end_time, '%Y-%m-%d %H:%i:%s')   AS end_time,
+        location, created_at
        FROM schedules`
     );
 
@@ -702,7 +848,7 @@ app.get("/api/getSchedulesByCompanyId/:company_id", async (req, res) => {
         location, created_at
        FROM schedules 
        WHERE company_id = ? 
-       ORDER BY start_time ASC`,
+       ORDER BY start_time DESC`,
       [parseInt(companyId)]
     );
 
@@ -759,48 +905,72 @@ app.get("/api/getSchedulesByCompanyId/:company_id", async (req, res) => {
 // === UPDATE (EDIT) SCHEDULE BY ID ===
 app.put("/api/updateSchedule/:id", async (req, res) => {
   const timestamp = new Date().toLocaleString("id-ID");
-  const scheduleId = req.params.id;
-  const { created_by, company_id, title, description, start_time, end_time, location } = req.body;
+  const { id } = req.params;
+  const { company_id, created_by, title, description, start_time, end_time, location } = req.body;
 
-  console.log(`\n[${timestamp}] 📝 PUT Request masuk ke /api/updateSchedule/${scheduleId}`);
+  console.log(`\n[${timestamp}] 📝 PUT Request masuk ke /api/updateSchedule/${id}`);
 
   try {
-    // 🛠️ HITUNG ULANG DURASI TERBARU SAAT PROSES UPDATE BERLANGSUNG
-    const [durationResult] = await db.query(
-      "SELECT TIMESTAMPDIFF(HOUR, CAST(? AS TIME), CAST(? AS TIME)) as diff",
-      [start_time, end_time]
-    );
-    let duration = durationResult[0] ? parseInt(durationResult[0].diff) : 0;
-    if (duration <= 0) { 
-        duration += 24; 
-    }
+    // =========================================================================
+    // 💡 PERBAIKAN UTAMA: Pastikan memisahkan kolom dengan KOMA (,), bukan AND!
+    // =========================================================================
+    const query = `
+      UPDATE schedules 
+      SET 
+        company_id = ?, 
+        created_by = ?, 
+        title = ?, 
+        description = ?, 
+        start_time = ?, 
+        end_time = ?, 
+        location = ?
+      WHERE id = ?
+    `;
 
-    // Jalankan perintah UPDATE SQL menyertakan kolom duration_hours yang baru
-    const [result] = await db.query(
-      `UPDATE schedules 
-       SET 
-         created_by = ?, 
-         company_id = ?, 
-         title = ?, 
-         description = ?, 
-         start_time = ?, 
-         end_time = ?,
-         location = ? 
-       WHERE id = ?`,
-      [parseInt(created_by), parseInt(company_id), title, description || null, start_time, end_time, duration, location, parseInt(scheduleId)]
-    );
+    // Pastikan urutan di dalam array di bawah ini SAMA PERSIS dengan urutan tanda tanya (?) di atas
+    const [result] = await db.query(query, [
+      parseInt(company_id),
+      parseInt(created_by),
+      title,
+      description || null,
+      start_time, // String format "yyyy-MM-dd HH:mm:ss" dari Android mysqlFormat
+      end_time,   // String format "yyyy-MM-dd HH:mm:ss" dari Android mysqlFormat
+      location || null,
+      parseInt(id) // Untuk mengisi WHERE id = ? di paling akhir
+    ]);
 
     if (result.affectedRows === 0) {
-      console.log(`[${timestamp}] ⚠️ Gagal update: Jadwal ID ${scheduleId} tidak ditemukan.`);
-      return res.status(404).json({ message: `Gagal memperbarui, jadwal dengan ID ${scheduleId} tidak ditemukan.` });
+      return res.status(404).json({ success: false, message: "Jadwal tidak ditemukan." });
     }
 
-    console.log(`[${timestamp}] ✅ Sukses memperbarui jadwal ID: ${scheduleId}. Durasi kerja terkini: ${duration} Jam.`);
-    return res.json({ success: true, message: "Jadwal berhasil diperbarui secara sukses!", id: scheduleId });
+    console.log(`[${timestamp}] 🚀 Sukses memperbarui jadwal ID: ${id}`);
+    return res.json({ success: true, message: "Jadwal berhasil diperbarui." });
 
   } catch (err) {
     console.error(`[${timestamp}] ❌ Database Error:`, err.message);
-    return res.status(500).json({ error: "Terjadi gangguan internal saat mengupdate data database.", details: err.message });
+    return res.status(500).json({ error: "Gagal memperbarui jadwal.", details: err.message });
+  }
+});
+
+app.delete("/api/deleteSchedule/:id", async (req, res) => {
+  const timestamp = new Date().toLocaleString("id-ID");
+  const { id } = req.params;
+
+  console.log(`\n[${timestamp}] 🗑️ DELETE Request masuk untuk ID Jadwal: ${id}`);
+
+  try {
+    const [result] = await db.query("DELETE FROM schedules WHERE id = ?", [parseInt(id)]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: "Jadwal tidak ditemukan." });
+    }
+
+    console.log(`[${timestamp}] 🚀 Sukses menghapus jadwal ID: ${id}`);
+    return res.json({ success: true, message: "Jadwal berhasil dihapus dari database." });
+
+  } catch (err) {
+    console.error(`[${timestamp}] ❌ Database Error:`, err.message);
+    return res.status(500).json({ error: "Gagal menghapus jadwal.", details: err.message });
   }
 });
 

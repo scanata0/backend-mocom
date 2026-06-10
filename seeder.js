@@ -122,7 +122,7 @@ const runSeeder = async () => {
         location VARCHAR(150),
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (created_by) REFERENCES users(id),
-        FOREIGN KEY (company_id) REFERENCES companies(id) -- Menghubungkan ke tabel companies
+        FOREIGN KEY (company_id) REFERENCES companies(id) 
       )
     `);
 
