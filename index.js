@@ -784,8 +784,7 @@ app.put("/api/updateSchedule/:id", async (req, res) => {
          title = ?, 
          description = ?, 
          start_time = ?, 
-         end_time = ?, 
-         duration_hours = ?,
+         end_time = ?,
          location = ? 
        WHERE id = ?`,
       [parseInt(created_by), parseInt(company_id), title, description || null, start_time, end_time, duration, location, parseInt(scheduleId)]
