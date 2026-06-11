@@ -974,6 +974,53 @@ app.delete("/api/deleteSchedule/:id", async (req, res) => {
   }
 });
 
+
+  /* ========================================================
+    ATTENDANCE 
+  ======================================================== */
+app.get("/api/getAttendancesByCompanyId/:company_id", async (req, res) => {
+    // Ambil parameter company_id dari URL routing Retrofit
+    const companyId = req.params.company_id;
+    const logTimestamp = new Date().toLocaleString("id-ID");
+
+    console.log(`\n[${logTimestamp}] 🔍 ADMIN MONITORING: Menarik data absensi untuk Company ID: ${companyId}`);
+
+    try {
+        // Kueri SQL JOIN Berantai untuk menembus company_id yang ada di tabel schedules
+        const querySql = `
+            SELECT 
+                a.id, 
+                a.assignment_id, 
+                a.check_in, 
+                a.check_out, 
+                a.status, 
+                a.sync_status,
+                a.created_at
+            FROM attendances a
+            INNER JOIN assignments n ON a.assignment_id = n.id
+            INNER JOIN schedules s ON n.schedule_id = s.id
+            WHERE s.company_id = ?
+            ORDER BY a.created_at DESC
+        `;
+
+        // Eksekusi kueri ke database MySQL cloud
+        const [rows] = await db.query(querySql, [parseInt(companyId)]);
+
+        // Log hasil ke konsol server untuk mempermudah debugging backend kamu
+        console.log(`[${logTimestamp}] ✅ Sukses menemukan ${rows.length} rekam absensi staff.`);
+
+        // Kembalikan data dalam bentuk Array JSON (Retrofit: List<AttendanceJson>)
+        return res.status(200).json(rows);
+
+    } catch (err) {
+        console.error(`[${logTimestamp}] ❌ Database Error pada getAttendancesByCompanyId:`, err.message);
+        return res.status(500).json({ 
+            error: "Gagal menarik data monitoring absensi dari server cloud.", 
+            details: err.message 
+        });
+    }
+});
+
   /* ========================================================
     ATTENDANCE REAL-TIME LOG & AI REPORT GENERATOR (HTTP REST)
   ======================================================== */
