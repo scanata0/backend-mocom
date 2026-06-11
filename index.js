@@ -991,8 +991,8 @@ app.get("/api/getAttendancesByCompanyId/:company_id", async (req, res) => {
             SELECT 
                 a.id, 
                 a.assignment_id, 
-                a.check_in, 
-                a.check_out, 
+                DATE_FORMAT(a.check_in, '%Y-%m-%d %H:%i:%s') AS check_in, 
+                DATE_FORMAT(a.check_out, '%Y-%m-%d %H:%i:%s') AS check_out, 
                 a.status, 
                 a.sync_status,
                 a.created_at
@@ -1006,8 +1006,23 @@ app.get("/api/getAttendancesByCompanyId/:company_id", async (req, res) => {
         // Eksekusi kueri ke database MySQL cloud
         const [rows] = await db.query(querySql, [parseInt(companyId)]);
 
-        // Log hasil ke konsol server untuk mempermudah debugging backend kamu
+        // =========================================================================
+        // 💡 LOG DEBUGGING DATA YANG TERKIRIM KE ANDROID (EduStaff Pro)
+        // =========================================================================
         console.log(`[${logTimestamp}] ✅ Sukses menemukan ${rows.length} rekam absensi staff.`);
+        
+        if (rows.length > 0) {
+            console.log(`[${logTimestamp}] 📋 Sampel data teratas yang dikirim ke Android (Max 3 baris):`);
+            rows.slice(0, 3).forEach((row, index) => {
+                console.log(`   👉 [Baris ${index + 1}] ID Absen: ${row.id} | Assignment ID: ${row.assignment_id}`);
+                console.log(`      • check_in  (Tipe: ${typeof row.check_in})  -> ${row.check_in}`);
+                console.log(`      • check_out (Tipe: ${typeof row.check_out}) -> ${row.check_out}`);
+                console.log(`      • status    -> ${row.status} | sync_status -> ${row.sync_status}`);
+            });
+        } else {
+            console.log(`[${logTimestamp}] ⚠️ Data kosong untuk Company ID ${companyId}, mengirim array kosong []`);
+        }
+        // =========================================================================
 
         // Kembalikan data dalam bentuk Array JSON (Retrofit: List<AttendanceJson>)
         return res.status(200).json(rows);
