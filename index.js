@@ -1800,6 +1800,343 @@ app.post("/api/respond-leave-request", async (req, res) => {
     );
   });
 
+  // staff attendance
+    app.get("/api/getAttendancesByUserId/:user_id", async (req, res) => {
+      // Ambil parameter user_id dari URL
+      const userId = req.params.user_id;
+      const logTimestamp = new Date().toLocaleString("id-ID");
+
+      console.log(
+          `\n[${logTimestamp}] 👤 STAFF ATTENDANCE: Menarik data absensi untuk User ID: ${userId}`
+      );
+
+      try {
+          // Query attendance berdasarkan user yang terhubung melalui assignments
+          const querySql = `
+            SELECT
+                ad.id,
+                ad.assignment_id,
+                DATE_FORMAT(ad.check_in, '%Y-%m-%d %H:%i:%s') AS check_in,
+                DATE_FORMAT(ad.check_out, '%Y-%m-%d %H:%i:%s') AS check_out,
+                ad.status,
+                ad.sync_status,
+                ad.created_at,
+                s.id AS schedule_id,
+                s.title,
+                s.location,
+                s.start_time,
+                s.end_time
+            FROM attendances ad
+            JOIN assignments ag
+                ON ad.assignment_id = ag.id
+            JOIN schedules s
+                ON s.id = ag.schedule_id
+            WHERE ag.user_id = ?
+            ORDER BY ad.created_at DESC;
+          `;
+
+          const [rows] = await db.query(
+              querySql,
+              [parseInt(userId)]
+          );
+
+          // ============================================================
+          // DEBUG LOG
+          // ============================================================
+          console.log(
+              `[${logTimestamp}] ✅ Ditemukan ${rows.length} data absensi untuk User ID ${userId}`
+          );
+
+          if (rows.length > 0) {
+              console.log(
+                  `[${logTimestamp}] 📋 Sampel data yang dikirim ke Android (Max 3 baris):`
+              );
+
+              rows.slice(0, 3).forEach((row, index) => {
+                  console.log(
+                      `   👉 [Baris ${index + 1}] Attendance ID: ${row.id}`
+                  );
+                  console.log(
+                      `      • assignment_id -> ${row.assignment_id}`
+                  );
+                  console.log(
+                      `      • check_in      -> ${row.check_in}`
+                  );
+                  console.log(
+                      `      • check_out     -> ${row.check_out}`
+                  );
+                  console.log(
+                      `      • status        -> ${row.status}`
+                  );
+              });
+          } else {
+              console.log(
+                  `[${logTimestamp}] ⚠️ Tidak ada data absensi untuk User ID ${userId}`
+              );
+          }
+          // ============================================================
+
+          return res.status(200).json(rows);
+
+      } catch (err) {
+          console.error(
+              `[${logTimestamp}] ❌ Database Error pada getAttendancesByUserId:`,
+              err.message
+          );
+
+          return res.status(500).json({
+              error: "Gagal mengambil data absensi staff.",
+              details: err.message
+          });
+      }
+  });
+
+  //staff check in
+    app.post("/api/checkIn", async (req, res) => {
+      const logTimestamp = new Date().toLocaleString("id-ID");
+
+      try {
+
+          const { assignment_id } = req.body;
+
+          console.log(
+              `\n[${logTimestamp}] 📍 CHECK IN REQUEST | Assignment ID: ${assignment_id}`
+          );
+
+          // Validasi input
+          if (!assignment_id) {
+              return res.status(400).json({
+                  error: "assignment_id wajib diisi"
+              });
+          }
+
+          // Cek assignment ada atau tidak
+          const [assignmentRows] = await db.query(
+              `
+              SELECT
+                  ag.id,
+                  ag.user_id,
+                  ag.schedule_id,
+                  s.title,
+                  s.start_time,
+                  s.end_time
+              FROM assignments ag
+              INNER JOIN schedules s
+                  ON ag.schedule_id = s.id
+              WHERE ag.id = ?
+              `,
+              [assignment_id]
+          );
+
+          if (assignmentRows.length === 0) {
+              return res.status(404).json({
+                  error: "Assignment tidak ditemukan"
+              });
+          }
+
+          const assignment = assignmentRows[0];
+
+          // Cek apakah sudah check in hari ini
+          const [existingAttendance] = await db.query(
+              `
+              SELECT *
+              FROM attendances
+              WHERE assignment_id = ?
+              AND DATE(check_in) = CURDATE()
+              `,
+              [assignment_id]
+          );
+
+          if (existingAttendance.length > 0) {
+              return res.status(409).json({
+                  error: "Staff sudah melakukan check in hari ini"
+              });
+          }
+
+          // Tentukan status
+          const now = new Date();
+          const scheduleStart = new Date(assignment.start_time);
+
+          let status = "present";
+
+          if (now > scheduleStart) {
+              status = "late";
+          }
+
+          // Simpan attendance
+          const [insertResult] = await db.query(
+              `
+              INSERT INTO attendances
+              (
+                  assignment_id,
+                  check_in,
+                  status,
+                  sync_status,
+                  created_at
+              )
+              VALUES
+              (
+                  ?,
+                  NOW(),
+                  ?,
+                  'synced',
+                  NOW()
+              )
+              `,
+              [
+                  assignment_id,
+                  status
+              ]
+          );
+
+          // Ambil data yang baru dibuat
+          const [attendanceRows] = await db.query(
+              `
+              SELECT
+                  id,
+                  assignment_id,
+                  DATE_FORMAT(check_in,'%Y-%m-%d %H:%i:%s') AS check_in,
+                  DATE_FORMAT(check_out,'%Y-%m-%d %H:%i:%s') AS check_out,
+                  status,
+                  sync_status,
+                  DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s') AS created_at
+              FROM attendances
+              WHERE id = ?
+              `,
+              [insertResult.insertId]
+          );
+
+          console.log(
+              `[${logTimestamp}] ✅ Check In berhasil | Attendance ID: ${insertResult.insertId}`
+          );
+
+          return res.status(201).json({
+              success: true,
+              message: "Check In berhasil",
+              attendance: attendanceRows[0]
+          });
+
+      } catch (err) {
+
+          console.error(
+              `[${logTimestamp}] ❌ Error Check In:`,
+              err.message
+          );
+
+          return res.status(500).json({
+              success: false,
+              error: "Gagal melakukan Check In",
+              details: err.message
+          });
+      }
+  });
+
+  //staff check out
+    app.put("/api/checkOut/:attendance_id", async (req, res) => {
+
+      const attendanceId = parseInt(req.params.attendance_id);
+      const logTimestamp = new Date().toLocaleString("id-ID");
+
+      console.log(
+          `\n[${logTimestamp}] 📍 CHECK OUT REQUEST | Attendance ID: ${attendanceId}`
+      );
+
+      try {
+
+          // Validasi ID
+          if (isNaN(attendanceId)) {
+              return res.status(400).json({
+                  success: false,
+                  error: "attendance_id harus berupa angka"
+              });
+          }
+
+          // Cek attendance ada atau tidak
+          const [attendanceRows] = await db.query(
+              `
+              SELECT
+                  id,
+                  assignment_id,
+                  check_in,
+                  check_out,
+                  status
+              FROM attendances
+              WHERE id = ?
+              `,
+              [attendanceId]
+          );
+
+          if (attendanceRows.length === 0) {
+              return res.status(404).json({
+                  success: false,
+                  error: "Attendance tidak ditemukan"
+              });
+          }
+
+          const attendance = attendanceRows[0];
+
+          // Sudah checkout?
+          if (attendance.check_out !== null) {
+              return res.status(409).json({
+                  success: false,
+                  error: "Attendance sudah melakukan check out"
+              });
+          }
+
+          // Update checkout
+          await db.query(
+              `
+              UPDATE attendances
+              SET
+                  check_out = NOW(),
+                  sync_status = 'synced'
+              WHERE id = ?
+              `,
+              [attendanceId]
+          );
+
+          // Ambil data terbaru
+          const [updatedRows] = await db.query(
+              `
+              SELECT
+                  id,
+                  assignment_id,
+                  DATE_FORMAT(check_in,'%Y-%m-%d %H:%i:%s') AS check_in,
+                  DATE_FORMAT(check_out,'%Y-%m-%d %H:%i:%s') AS check_out,
+                  status,
+                  sync_status,
+                  DATE_FORMAT(created_at,'%Y-%m-%d %H:%i:%s') AS created_at
+              FROM attendances
+              WHERE id = ?
+              `,
+              [attendanceId]
+          );
+
+          console.log(
+              `[${logTimestamp}] ✅ Check Out berhasil | Attendance ID: ${attendanceId}`
+          );
+
+          return res.status(200).json({
+              success: true,
+              message: "Check Out berhasil",
+              attendance: updatedRows[0]
+          });
+
+      } catch (err) {
+
+          console.error(
+              `[${logTimestamp}] ❌ Error Check Out:`,
+              err.message
+          );
+
+          return res.status(500).json({
+              success: false,
+              error: "Gagal melakukan Check Out",
+              details: err.message
+          });
+      }
+  });
+
   /* =========================
     SERVER
   ========================= */
