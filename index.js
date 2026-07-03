@@ -1800,6 +1800,53 @@ app.get("/api/getAllAnnouncements", (req, res) => {
   );
 });
 
+/* =========================
+   MY SCHEDULE (STAFF)
+========================= */
+
+app.get("/api/mySchedule/:user_id", (req, res) => {
+
+  const { user_id } = req.params;
+
+  db.query(
+    `SELECT
+        a.id AS assignment_id,
+        a.schedule_id,
+        a.user_id,
+        a.role_in_event,
+        a.job_desc,
+        a.status,
+
+        s.title,
+        s.description,
+        s.start_time,
+        s.end_time,
+        s.location
+
+     FROM assignments a
+
+     INNER JOIN schedules s
+        ON a.schedule_id = s.id
+
+     WHERE a.user_id = ?
+
+     ORDER BY s.start_time ASC`,
+    [user_id],
+    (err, results) => {
+
+      if (err) {
+        return res.status(500).json({
+          error: err.message
+        });
+      }
+
+      res.json(results);
+
+    }
+  );
+
+});
+
 // staff attendance
 app.get("/api/getAttendancesByUserId/:user_id", async (req, res) => {
   // Ambil parameter user_id dari URL
