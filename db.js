@@ -1,9 +1,9 @@
 const mysql = require("mysql2/promise");
 
 const dbConfig = {
-  host: "localhost",
-  user: "root",
-  password: "",
+  host: "mysql-mocom-mysql-mocom.c.aivencloud.com",
+  user: "avnadmin",
+  password: "AVNS_otQvI_yGfq2rd9FdcDa",
 };
 
 let db;

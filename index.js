@@ -1,164 +1,164 @@
-  require('dotenv').config();
-  const express = require("express");
-  const cors = require("cors");
-  const { initDb } = require("./db");
+require('dotenv').config();
+const express = require("express");
+const cors = require("cors");
+const { initDb } = require("./db");
 
-  const app = express();
+const app = express();
 
-  let db;
+let db;
 
-  app.use(cors({
-      origin: 'http://127.0.0.1:8000',
-      credentials: true
-  }));
-  app.use(express.json());
-  app.use(express.urlencoded({ extended: true }));
+app.use(cors({
+  origin: 'http://127.0.0.1:8000',
+  credentials: true
+}));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-  /* =========================
-    ROLES
-  ========================= */
+/* =========================
+  ROLES
+========================= */
 
-  app.post("/api/insertRoles", (req, res) => {
-    const { role_name } = req.body;
+app.post("/api/insertRoles", (req, res) => {
+  const { role_name } = req.body;
 
-    db.query(
-      "INSERT INTO roles (role_name) VALUES (?)",
-      [role_name],
-      (err, result) => {
-        if (err) {
-          return res.status(500).json({
-            error: err.message
-          });
-        }
-
-        res.json({
-          id: result.insertId,
-          role_name
+  db.query(
+    "INSERT INTO roles (role_name) VALUES (?)",
+    [role_name],
+    (err, result) => {
+      if (err) {
+        return res.status(500).json({
+          error: err.message
         });
       }
-    );
-  });
 
-  app.get("/api/getAllRoles", (req, res) => {
-    db.query(
-      "SELECT * FROM roles",
-      (err, results) => {
-
-        if (err) {
-          return res.status(500).json({
-            error: err.message
-          });
-        }
-
-        res.json(results);
-      }
-    );
-  });
-
-  // REVISI: Mengubah ke Async/Await agar sinkron dengan koneksi database utama
-  // PASTIKAN ENDPOINT INI ADA DAN SUDAH BERBASIS ASYNC/AWAIT
-  app.get("/api/getAllStaffCompany/:company_id", async (req, res) => {
-    try {
-      const { company_id } = req.params;
-
-      console.log(`\n📥 REQUEST MASUK: Mengambil data staf khusus untuk Company ID #${company_id}`);
-
-      // Mengeksekusi query SQL terfilter berdasarkan ID perusahaan sang admin
-      const [results] = await db.query(
-        "SELECT id, full_name, username, email, role_id, company_id FROM users WHERE company_id = ?",
-        [parseInt(company_id)]
-      );
-
-      console.log(`🚀 Sukses memfilter dan mengirimkan ${results.length} data staf ke Laravel.`);
-
-      // Mengembalikan data berupa array JSON ke Laravel
-      return res.json(results);
-
-    } catch (err) {
-      console.error("❌ BACKEND ERROR pada getAllStaffCompany:", err.message);
-      return res.status(500).json({ error: "Gagal memfilter data staf: " + err.message });
+      res.json({
+        id: result.insertId,
+        role_name
+      });
     }
-  });
+  );
+});
 
-  // REGISTER COMPANY
-  // REVISI TOTAL: Terapkan gaya Async/Await agar sinkron dengan koneksi initDb()
-  app.post("/api/registerCompany", async (req, res) => {
-    try {
-      const { company_name, email, password, phone_number, address } = req.body;
+app.get("/api/getAllRoles", (req, res) => {
+  db.query(
+    "SELECT * FROM roles",
+    (err, results) => {
 
-      console.log("=========================================");
-      console.log("📥 REQUEST MASUK DARI LARAVEL PANEL");
-      console.log("Mendaftarkan Perusahaan:", company_name);
+      if (err) {
+        return res.status(500).json({
+          error: err.message
+        });
+      }
 
-      // 1. Jalankan Query Pertama: Masukkan data ke tabel companies (Menggunakan Await)
-      const [companyResult] = await db.query(
-        `INSERT INTO companies 
+      res.json(results);
+    }
+  );
+});
+
+// REVISI: Mengubah ke Async/Await agar sinkron dengan koneksi database utama
+// PASTIKAN ENDPOINT INI ADA DAN SUDAH BERBASIS ASYNC/AWAIT
+app.get("/api/getAllStaffCompany/:company_id", async (req, res) => {
+  try {
+    const { company_id } = req.params;
+
+    console.log(`\n📥 REQUEST MASUK: Mengambil data staf khusus untuk Company ID #${company_id}`);
+
+    // Mengeksekusi query SQL terfilter berdasarkan ID perusahaan sang admin
+    const [results] = await db.query(
+      "SELECT id, full_name, username, email, role_id, company_id FROM users WHERE company_id = ?",
+      [parseInt(company_id)]
+    );
+
+    console.log(`🚀 Sukses memfilter dan mengirimkan ${results.length} data staf ke Laravel.`);
+
+    // Mengembalikan data berupa array JSON ke Laravel
+    return res.json(results);
+
+  } catch (err) {
+    console.error("❌ BACKEND ERROR pada getAllStaffCompany:", err.message);
+    return res.status(500).json({ error: "Gagal memfilter data staf: " + err.message });
+  }
+});
+
+// REGISTER COMPANY
+// REVISI TOTAL: Terapkan gaya Async/Await agar sinkron dengan koneksi initDb()
+app.post("/api/registerCompany", async (req, res) => {
+  try {
+    const { company_name, email, password, phone_number, address } = req.body;
+
+    console.log("=========================================");
+    console.log("📥 REQUEST MASUK DARI LARAVEL PANEL");
+    console.log("Mendaftarkan Perusahaan:", company_name);
+
+    // 1. Jalankan Query Pertama: Masukkan data ke tabel companies (Menggunakan Await)
+    const [companyResult] = await db.query(
+      `INSERT INTO companies 
         (company_name, email, password, phone_number, address) 
         VALUES (?, ?, ?, ?, ?)`,
-        [company_name, email, password, phone_number, address]
-      );
+      [company_name, email, password, phone_number, address]
+    );
 
-      // Ambil ID otomatis dari hasil insert barusan
-      // Catatan: Jika menggunakan mysql2/promise, ID didapat dari properti insertId
-      const companyId = companyResult.insertId;
-      console.log(`✅ Sukses Insert Table Companies. ID Terbakar: #${companyId}`);
+    // Ambil ID otomatis dari hasil insert barusan
+    // Catatan: Jika menggunakan mysql2/promise, ID didapat dari properti insertId
+    const companyId = companyResult.insertId;
+    console.log(`✅ Sukses Insert Table Companies. ID Terbakar: #${companyId}`);
 
-      // 2. Jalankan Query Kedua: Membuat akun admin utama otomatis di tabel users
-      // PENTING: Pastikan kolom database (fullname, username, dll) namanya sama dengan MySQL kamu!
-      const usernameAwal = email.split('@')[0];
-      const fullNameAdmin = company_name + " Admin";
+    // 2. Jalankan Query Kedua: Membuat akun admin utama otomatis di tabel users
+    // PENTING: Pastikan kolom database (fullname, username, dll) namanya sama dengan MySQL kamu!
+    const usernameAwal = email.split('@')[0];
+    const fullNameAdmin = company_name + " Admin";
 
-      await db.query(
-        `INSERT INTO users 
+    await db.query(
+      `INSERT INTO users 
         (full_name, username, email, password, role_id, company_id) 
         VALUES (?, ?, ?, ?, 1, ?)`,
-        [fullNameAdmin, usernameAwal, email, password, companyId]
-      );
+      [fullNameAdmin, usernameAwal, email, password, companyId]
+    );
 
-      console.log(`✅ Sukses Membuat Akun Login Admin Default untuk @${usernameAwal}`);
-      console.log("=========================================");
+    console.log(`✅ Sukses Membuat Akun Login Admin Default untuk @${usernameAwal}`);
+    console.log("=========================================");
 
-      // 3. KIRIM RESPONS SUKSES LANGSUNG KE LARAVEL
-      return res.json({
-        id: companyId,
-        company_name,
-        email,
-        phone_number,
-        address,
-        message: "Company and Admin User successfully created using Async/Await."
-      });
+    // 3. KIRIM RESPONS SUKSES LANGSUNG KE LARAVEL
+    return res.json({
+      id: companyId,
+      company_name,
+      email,
+      phone_number,
+      address,
+      message: "Company and Admin User successfully created using Async/Await."
+    });
 
-    } catch (err) {
-      // Apabila ada nama kolom database yang salah ketik, blok CATCH ini akan langsung menangkapnya
-      console.error("❌ BACKEND DATABASE ERROR:", err.message);
+  } catch (err) {
+    // Apabila ada nama kolom database yang salah ketik, blok CATCH ini akan langsung menangkapnya
+    console.error("❌ BACKEND DATABASE ERROR:", err.message);
 
-      // Kirim respons status 500 dalam hitungan milidetik agar Laravel tidak mengalami Timeout 30 detik
-      return res.status(500).json({
-        error: "Gagal memproses registrasi pada database pusat: " + err.message
-      });
+    // Kirim respons status 500 dalam hitungan milidetik agar Laravel tidak mengalami Timeout 30 detik
+    return res.status(500).json({
+      error: "Gagal memproses registrasi pada database pusat: " + err.message
+    });
+  }
+});
+
+// ENDPOINT: MENGAMBIL DETAIL SATU PERUSAHAAN BERDASARKAN ID
+app.get("/api/getCompanyDetail/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const [results] = await db.query(
+      "SELECT id, company_name, email, phone_number, address FROM companies WHERE id = ?",
+      [id]
+    );
+
+    if (results.length === 0) {
+      return res.status(404).json({ error: "Data perusahaan tidak ditemukan." });
     }
-  });
 
-  // ENDPOINT: MENGAMBIL DETAIL SATU PERUSAHAAN BERDASARKAN ID
-  app.get("/api/getCompanyDetail/:id", async (req, res) => {
-    try {
-      const { id } = req.params;
-
-      const [results] = await db.query(
-        "SELECT id, company_name, email, phone_number, address FROM companies WHERE id = ?",
-        [id]
-      );
-
-      if (results.length === 0) {
-        return res.status(404).json({ error: "Data perusahaan tidak ditemukan." });
-      }
-
-      return res.json(results[0]);
-    } catch (err) {
-      console.error("❌ BACKEND ERROR pada getCompanyDetail:", err.message);
-      return res.status(500).json({ error: err.message });
-    }
-  });
+    return res.json(results[0]);
+  } catch (err) {
+    console.error("❌ BACKEND ERROR pada getCompanyDetail:", err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
 
 
 
@@ -194,7 +194,7 @@ app.get("/api/getUsersByCompanyId/:company_id", async (req, res) => {
         DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s') AS updated_at
        FROM users 
        WHERE company_id = ? AND role_id != 1
-       ORDER BY created_at ASC`, 
+       ORDER BY created_at ASC`,
       [parseInt(companyId)]
     );
 
@@ -211,13 +211,13 @@ app.get("/api/getUsersByCompanyId/:company_id", async (req, res) => {
 // app.get("/api/getUsersByCompanyId/:company_id", async (req, res) => {
 //   try {
 //     const { company_id } = req.params;
-    
+
 //     // Query SQL kamu sudah sangat bagus & aman dari SQL Injection (menggunakan ?)
 //     const [rows] = await db.query(
 //       "SELECT id, full_name, email, role_id, is_active FROM users WHERE company_id = ? AND role_id = 2", // 💡 Tips: Ikut sertakan is_active untuk badge status di UserAdapter kamu
 //       [parseInt(company_id)]
 //     );
-    
+
 //     return res.json(rows);
 //   } catch (err) {
 //     return res.status(500).json({ error: err.message });
@@ -232,7 +232,7 @@ app.post("/api/superadmin/addStaff", async (req, res) => {
   console.log("📦 Body Mentah yang Diterima:", req.body);
 
   try {
-    const { company_id, full_name, email, password} = req.body;
+    const { company_id, full_name, email, password } = req.body;
 
     if (!company_id || !full_name || !email || !password) {
       console.warn("⚠️ Gagal validasi: Ada parameter wajib yang kosong.");
@@ -256,74 +256,74 @@ app.post("/api/superadmin/addStaff", async (req, res) => {
   }
 });
 
-  /* =========================
-    AUTH
-  ========================= */
-  // REGISTER
-  app.post("/api/register", async (req, res) => {
-    try {
-      const {
-        full_name,
-        username,
-        email,
-        password,
-        role_id,
-        company_id
-      } = req.body;
+/* =========================
+  AUTH
+========================= */
+// REGISTER
+app.post("/api/register", async (req, res) => {
+  try {
+    const {
+      full_name,
+      username,
+      email,
+      password,
+      role_id,
+      company_id
+    } = req.body;
 
-      console.log("=========================================");
-      console.log(`📥 REQUEST MASUK: Mendaftarkan Staff Baru untuk Company ID #${company_id}`);
-      console.log(`Nama: ${full_name} | Username: @${username}`);
+    console.log("=========================================");
+    console.log(`📥 REQUEST MASUK: Mendaftarkan Staff Baru untuk Company ID #${company_id}`);
+    console.log(`Nama: ${full_name} | Username: @${username}`);
 
-      // Eksekusi query dengan gaya await promise
-      // PASTIKAN nama kolom database di bawah ini (full_name, username, dll) sudah sesuai dengan isi tabel MySQL kamu!
-      const [result] = await db.query(
-        `INSERT INTO users 
+    // Eksekusi query dengan gaya await promise
+    // PASTIKAN nama kolom database di bawah ini (full_name, username, dll) sudah sesuai dengan isi tabel MySQL kamu!
+    const [result] = await db.query(
+      `INSERT INTO users 
         (full_name, username, email, password, role_id, company_id)
         VALUES (?, ?, ?, ?, ?, ?)`,
-        [
-          full_name,
-          username,
-          email,
-          password,
-          parseInt(role_id),
-          parseInt(company_id)
-        ]
-      );
-
-      console.log(`✅ Staff Baru Berhasil Disimpan. User ID Terbakar: #${result.insertId}`);
-      console.log("=========================================");
-
-      // Kirim respons sukses berupa JSON secara instan ke Laravel
-      return res.json({
-        id: result.insertId,
+      [
         full_name,
         username,
         email,
         password,
-        role_id,
-        company_id,
-        message: "Staff account successfully created using Async/Await."
-      });
+        parseInt(role_id),
+        parseInt(company_id)
+      ]
+    );
 
-    } catch (err) {
-      // Apabila terjadi error (misal username/email duplikat atau nama kolom salah ketik)
-      console.error("❌ BACKEND DATABASE ERROR pada /api/register:", err.message);
+    console.log(`✅ Staff Baru Berhasil Disimpan. User ID Terbakar: #${result.insertId}`);
+    console.log("=========================================");
 
-      // Kirim respons status 500 dalam hitungan milidetik agar Laravel tidak mengalami Timeout 30 detik
-      return res.status(500).json({
-        error: "Gagal menyimpan data staff baru ke database pusat: " + err.message
-      });
-    }
-  });
+    // Kirim respons sukses berupa JSON secara instan ke Laravel
+    return res.json({
+      id: result.insertId,
+      full_name,
+      username,
+      email,
+      password,
+      role_id,
+      company_id,
+      message: "Staff account successfully created using Async/Await."
+    });
 
-  // LOGIN
-  app.post("/api/login", async (req, res) => {
-    try {
-      const { email, username, password } = req.body;
+  } catch (err) {
+    // Apabila terjadi error (misal username/email duplikat atau nama kolom salah ketik)
+    console.error("❌ BACKEND DATABASE ERROR pada /api/register:", err.message);
 
-      console.log("EMAIL =", email);
-      console.log("PASSWORD =", password);
+    // Kirim respons status 500 dalam hitungan milidetik agar Laravel tidak mengalami Timeout 30 detik
+    return res.status(500).json({
+      error: "Gagal menyimpan data staff baru ke database pusat: " + err.message
+    });
+  }
+});
+
+// LOGIN
+app.post("/api/login", async (req, res) => {
+  try {
+    const { email, username, password } = req.body;
+
+    console.log("EMAIL =", email);
+    console.log("PASSWORD =", password);
 
     const [results] = await db.query(
       `SELECT
@@ -338,29 +338,29 @@ app.post("/api/superadmin/addStaff", async (req, res) => {
       [email, username, password]
     );
 
-      if (results.length === 0) {
-        return res.status(401).json({
-          message: "Login gagal"
-        });
-      }
-
-      res.json(results[0]);
-
-    } catch (err) {
-      console.error(err);
-      res.status(500).json({
-        error: err.message
+    if (results.length === 0) {
+      return res.status(401).json({
+        message: "Login gagal"
       });
     }
-  });
 
-  // LOGIN
-  app.post("/api/loginCompany", (req, res) => {
+    res.json(results[0]);
 
-    const { email, password } = req.body;
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      error: err.message
+    });
+  }
+});
 
-    db.query(
-      `SELECT 
+// LOGIN
+app.post("/api/loginCompany", (req, res) => {
+
+  const { email, password } = req.body;
+
+  db.query(
+    `SELECT 
         id
         company_name,
         email,
@@ -368,33 +368,33 @@ app.post("/api/superadmin/addStaff", async (req, res) => {
         address
       FROM companies
       WHERE email = ? AND password = ?`,
-      [email, password],
-      (err, results) => {
+    [email, password],
+    (err, results) => {
 
-        if (err) {
-          return res.status(500).json({
-            error: err.message
-          });
-        }
-
-        if (results.length === 0) {
-          return res.status(401).json({
-            message: "Login gagal"
-          });
-        }
-
-        res.json(results[0]);
+      if (err) {
+        return res.status(500).json({
+          error: err.message
+        });
       }
-    );
-  });
 
-  // PROFILE
-  app.get("/api/getUserProfile/:id", (req, res) => {
+      if (results.length === 0) {
+        return res.status(401).json({
+          message: "Login gagal"
+        });
+      }
 
-    const { id } = req.params;
+      res.json(results[0]);
+    }
+  );
+});
 
-    db.query(
-      `SELECT 
+// PROFILE
+app.get("/api/getUserProfile/:id", (req, res) => {
+
+  const { id } = req.params;
+
+  db.query(
+    `SELECT 
         id,
         full_name,
         username,
@@ -402,95 +402,95 @@ app.post("/api/superadmin/addStaff", async (req, res) => {
         role_id
       FROM users
       WHERE id = ?`,
-      [id],
-      (err, results) => {
+    [id],
+    (err, results) => {
 
-        if (err) {
-          return res.status(500).json({
-            error: err.message
-          });
-        }
-
-        res.json(results[0]);
+      if (err) {
+        return res.status(500).json({
+          error: err.message
+        });
       }
-    );
-  });
 
-  /* =========================
-    USERS
-  ========================= */
+      res.json(results[0]);
+    }
+  );
+});
 
-  app.get("/api/getAllUsers", (req, res) => {
-    const timestamp = new Date().toLocaleString("id-ID");
-    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+/* =========================
+  USERS
+========================= */
 
-    console.log(`\n[${timestamp}] 📥 GET Request masuk ke /api/getAllUsers`);
-    console.log(`[${timestamp}] 🖥️  Dipanggil oleh IP: ${clientIp}`);
+app.get("/api/getAllUsers", (req, res) => {
+  const timestamp = new Date().toLocaleString("id-ID");
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
 
-    db.query(
-      "SELECT * FROM users",
-      (err, results) => {
-        if (err) {
-          console.error(`[${timestamp}] ❌ Database Error:`, err.message);
+  console.log(`\n[${timestamp}] 📥 GET Request masuk ke /api/getAllUsers`);
+  console.log(`[${timestamp}] 🖥️  Dipanggil oleh IP: ${clientIp}`);
 
-          return res.status(500).json({
-            error: err.message
-          });
-        }
+  db.query(
+    "SELECT * FROM users",
+    (err, results) => {
+      if (err) {
+        console.error(`[${timestamp}] ❌ Database Error:`, err.message);
 
-        // === PERBAIKAN LOG UNTUK MENAMPILKAN SEMUA DATA ===
-        console.log(`[${timestamp}] 🚀 Sukses mengambil ${results.length} data dari database.`);
-        console.log(`[${timestamp}] 📋 DAFTAR DATA YANG DIKIRIM KE ANDROID:`);
-
-        if (results.length === 0) {
-          console.log(`[${timestamp}] ⚠️  Tabel kosong, mengirim array kosong [].`);
-        } else {
-          console.table(results);
-        }
-
-        res.json(results);
+        return res.status(500).json({
+          error: err.message
+        });
       }
-    );
-  });
 
-  app.get("/api/getAllStaff", (req, res) => {
-    const timestamp = new Date().toLocaleString("id-ID");
-    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+      // === PERBAIKAN LOG UNTUK MENAMPILKAN SEMUA DATA ===
+      console.log(`[${timestamp}] 🚀 Sukses mengambil ${results.length} data dari database.`);
+      console.log(`[${timestamp}] 📋 DAFTAR DATA YANG DIKIRIM KE ANDROID:`);
 
-    console.log(`\n[${timestamp}] 📥 GET Request masuk ke /api/getStaff`);
-    console.log(`[${timestamp}] 🖥️  Dipanggil oleh IP: ${clientIp}`);
-
-    db.query(
-      "SELECT * FROM users",
-      (err, results) => {
-        if (err) {
-          console.error(`[${timestamp}] ❌ Database Error:`, err.message);
-
-          return res.status(500).json({
-            error: err.message
-          });
-        }
-
-        // === PERBAIKAN LOG UNTUK MENAMPILKAN SEMUA DATA ===
-        console.log(`[${timestamp}] 🚀 Sukses mengambil ${results.length} data dari database.`);
-        console.log(`[${timestamp}] 📋 DAFTAR DATA YANG DIKIRIM KE ANDROID:`);
-
-        if (results.length === 0) {
-          console.log(`[${timestamp}] ⚠️  Tabel kosong, mengirim array kosong [].`);
-        } else {
-          console.table(results);
-        }
-
-        res.json(results);
+      if (results.length === 0) {
+        console.log(`[${timestamp}] ⚠️  Tabel kosong, mengirim array kosong [].`);
+      } else {
+        console.table(results);
       }
-    );
-  });
 
-  // === GET ALL STAFF BY COMPANY ID (ISOLASI MULTI-TENANT & EMERGENCY INTERVENTION) ===
+      res.json(results);
+    }
+  );
+});
+
+app.get("/api/getAllStaff", (req, res) => {
+  const timestamp = new Date().toLocaleString("id-ID");
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+
+  console.log(`\n[${timestamp}] 📥 GET Request masuk ke /api/getStaff`);
+  console.log(`[${timestamp}] 🖥️  Dipanggil oleh IP: ${clientIp}`);
+
+  db.query(
+    "SELECT * FROM users",
+    (err, results) => {
+      if (err) {
+        console.error(`[${timestamp}] ❌ Database Error:`, err.message);
+
+        return res.status(500).json({
+          error: err.message
+        });
+      }
+
+      // === PERBAIKAN LOG UNTUK MENAMPILKAN SEMUA DATA ===
+      console.log(`[${timestamp}] 🚀 Sukses mengambil ${results.length} data dari database.`);
+      console.log(`[${timestamp}] 📋 DAFTAR DATA YANG DIKIRIM KE ANDROID:`);
+
+      if (results.length === 0) {
+        console.log(`[${timestamp}] ⚠️  Tabel kosong, mengirim array kosong [].`);
+      } else {
+        console.table(results);
+      }
+
+      res.json(results);
+    }
+  );
+});
+
+// === GET ALL STAFF BY COMPANY ID (ISOLASI MULTI-TENANT & EMERGENCY INTERVENTION) ===
 app.get("/api/getStaffByCompany/:company_id", async (req, res) => {
   const timestamp = new Date().toLocaleString("id-ID");
   const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-  
+
   // Menangkap parameter company_id dari URL Request
   const companyId = req.params.company_id;
 
@@ -517,7 +517,7 @@ app.get("/api/getStaffByCompany/:company_id", async (req, res) => {
     );
 
     console.log(`[${timestamp}] 🚀 Sukses menarik data. Menemukan ${results.length} staf aktif.`);
-    
+
     // Cetak visualisasi data berbentuk tabel di terminal Node.js jika data ditemukan
     if (results.length > 0) {
       console.table(results);
@@ -547,38 +547,38 @@ app.get("/api/getUserById/:id", async (req, res) => {
   }
 });
 
-  app.get("/api/getAllMember", (req, res) => {
-    const timestamp = new Date().toLocaleString("id-ID");
-    const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
+app.get("/api/getAllMember", (req, res) => {
+  const timestamp = new Date().toLocaleString("id-ID");
+  const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
 
-    console.log(`\n[${timestamp}] 📥 GET Request masuk ke /api/getMember`);
-    console.log(`[${timestamp}] 🖥️  Dipanggil oleh IP: ${clientIp}`);
+  console.log(`\n[${timestamp}] 📥 GET Request masuk ke /api/getMember`);
+  console.log(`[${timestamp}] 🖥️  Dipanggil oleh IP: ${clientIp}`);
 
-    db.query(
-      "SELECT * FROM users WHERE role_id=2",
-      (err, results) => {
-        if (err) {
-          console.error(`[${timestamp}] ❌ Database Error:`, err.message);
+  db.query(
+    "SELECT * FROM users WHERE role_id=2",
+    (err, results) => {
+      if (err) {
+        console.error(`[${timestamp}] ❌ Database Error:`, err.message);
 
-          return res.status(500).json({
-            error: err.message
-          });
-        }
-
-        // === PERBAIKAN LOG UNTUK MENAMPILKAN SEMUA DATA ===
-        console.log(`[${timestamp}] 🚀 Sukses mengambil ${results.length} data dari database.`);
-        console.log(`[${timestamp}] 📋 DAFTAR DATA YANG DIKIRIM KE ANDROID:`);
-
-        if (results.length === 0) {
-          console.log(`[${timestamp}] ⚠️  Tabel kosong, mengirim array kosong [].`);
-        } else {
-          console.table(results);
-        }
-
-        res.json(results);
+        return res.status(500).json({
+          error: err.message
+        });
       }
-    );
-  });
+
+      // === PERBAIKAN LOG UNTUK MENAMPILKAN SEMUA DATA ===
+      console.log(`[${timestamp}] 🚀 Sukses mengambil ${results.length} data dari database.`);
+      console.log(`[${timestamp}] 📋 DAFTAR DATA YANG DIKIRIM KE ANDROID:`);
+
+      if (results.length === 0) {
+        console.log(`[${timestamp}] ⚠️  Tabel kosong, mengirim array kosong [].`);
+      } else {
+        console.table(results);
+      }
+
+      res.json(results);
+    }
+  );
+});
 
 app.post("/api/insertUser", async (req, res) => {
   const timestamp = new Date().toLocaleString("id-ID");
@@ -601,13 +601,13 @@ app.post("/api/insertUser", async (req, res) => {
     const [result] = await db.query(
       `INSERT INTO users 
        (role_id, company_id, full_name, username, email, password, is_active) 
-       VALUES (?, ?, ?, ?, ?, ?, ?)`, 
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
-        parseInt(role_id), 
-        parseInt(company_id), 
-        full_name, 
-        username, 
-        email, 
+        parseInt(role_id),
+        parseInt(company_id),
+        full_name,
+        username,
+        email,
         password,
         parseInt(is_active ?? 1) // Jika Android tidak mengirim parameter is_active, otomatis set 1 (Aktif)
       ]
@@ -633,10 +633,10 @@ app.post("/api/insertUser", async (req, res) => {
 
   } catch (err) {
     console.error(`[${timestamp}] ❌ Database Error:`, err.message);
-    return res.status(500).json({ 
-      success: false, 
-      error: "Terjadi kesalahan saat menyimpan data pengguna baru.", 
-      details: err.message 
+    return res.status(500).json({
+      success: false,
+      error: "Terjadi kesalahan saat menyimpan data pengguna baru.",
+      details: err.message
     });
   }
 });
@@ -644,7 +644,7 @@ app.post("/api/insertUser", async (req, res) => {
 app.put("/api/updateUser/:id", async (req, res) => {
   const timestamp = new Date().toLocaleString("id-ID");
   const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
-  
+
   const { role_id, full_name, username, email, is_active } = req.body;
   const userId = req.params.id;
 
@@ -665,11 +665,11 @@ app.put("/api/updateUser/:id", async (req, res) => {
     `;
 
     const [result] = await db.query(querySql, [
-      parseInt(role_id), 
-      full_name, 
-      username, 
-      email, 
-      parseInt(is_active), 
+      parseInt(role_id),
+      full_name,
+      username,
+      email,
+      parseInt(is_active),
       parseInt(userId)
     ]);
 
@@ -684,10 +684,10 @@ app.put("/api/updateUser/:id", async (req, res) => {
 
   } catch (err) {
     console.error(`[${timestamp}] ❌ Database Error saat Update:`, err.message);
-    return res.status(500).json({ 
-      success: false, 
-      error: "Terjadi kesalahan saat memperbarui data pengguna.", 
-      details: err.message 
+    return res.status(500).json({
+      success: false,
+      error: "Terjadi kesalahan saat memperbarui data pengguna.",
+      details: err.message
     });
   }
 });
@@ -709,7 +709,7 @@ app.delete("/api/deleteUser/:id", async (req, res) => {
     }
 
     console.log(`[${timestamp}] 🚀 Sukses menghapus user ID: ${id} dari cloud MySQL.`);
-    
+
     // 💡 TIPS RETROFIT: Kirim status 200 OK murni agar Response<Unit> di Android membacanya sebagai sukses
     return res.status(200).json({ success: true, message: "User berhasil dihapus." });
 
@@ -719,9 +719,9 @@ app.delete("/api/deleteUser/:id", async (req, res) => {
   }
 });
 
-  /* =========================
-    SCHEDULES
-  ========================= */
+/* =========================
+  SCHEDULES
+========================= */
 
 app.post("/api/insertSchedules", async (req, res) => {
   const timestamp = new Date().toLocaleString("id-ID");
@@ -748,11 +748,11 @@ app.post("/api/insertSchedules", async (req, res) => {
        (company_id, created_by, title, description, start_time, end_time, location) 
        VALUES (?, ?, ?, ?, ?, ?, ?)`, // 🟢 Diubah dari 8 menjadi 7 tanda tanya
       [
-        parseInt(company_id), 
-        parseInt(created_by), 
-        title, 
-        description || null, 
-        start_time, 
+        parseInt(company_id),
+        parseInt(created_by),
+        title,
+        description || null,
+        start_time,
         end_time,
         location || "Default Area"
       ]
@@ -781,10 +781,10 @@ app.post("/api/insertSchedules", async (req, res) => {
       created_by: parseInt(created_by),
       title: title,
       description: description,
-      start_time: start_time, 
-      end_time: end_time,     
+      start_time: start_time,
+      end_time: end_time,
       location: location || "Default Area",
-      created_at: new Date().toISOString().replace('T', ' ').substring(0, 19) 
+      created_at: new Date().toISOString().replace('T', ' ').substring(0, 19)
     });
 
   } catch (err) {
@@ -853,44 +853,44 @@ app.get("/api/getSchedulesByCompanyId/:company_id", async (req, res) => {
     );
 
     console.log(`[${timestamp}] 🚀 Sukses menarik data. Menemukan ${results.length} blueprint shift.`);
-    
+
     if (results.length > 0) {
       console.log("\n=== DATA SCHEDULE ===");
 
       // 💡 PERBAIKAN UTAMA: Ukuran padEnd disesuaikan dengan panjang teks judul header agar tidak luber
-      const header = 
-        "id".padEnd(6) + 
-        "company_id".padEnd(13) + 
-        "user_id".padEnd(13) + 
-        "title".padEnd(25) + 
-        "start_time".padEnd(23) + 
-        "end_time".padEnd(23) + 
-        "location".padEnd(18) + 
+      const header =
+        "id".padEnd(6) +
+        "company_id".padEnd(13) +
+        "user_id".padEnd(13) +
+        "title".padEnd(25) +
+        "start_time".padEnd(23) +
+        "end_time".padEnd(23) +
+        "location".padEnd(18) +
         "created_at";
-      
+
       console.log(header);
       console.log("-".repeat(header.length + 2)); // Garis pembatas otomatis pas sesuai panjang header
 
       results.forEach(row => {
         // Konversi tanggal objek Date dari MySQL menjadi format string ringkas (YYYY-MM-DD HH:mm:ss)
-        const tanggalRingkas = row.created_at 
+        const tanggalRingkas = row.created_at
           ? new Date(row.created_at).toISOString().replace('T', ' ').substring(0, 19)
           : "-";
 
         // 💡 BARIS DATA: Angka padEnd disamakan persis dengan konfigurasi Header di atas
-        const barisData = 
-          String(row.id).padEnd(6) + 
-          String(row.company_id).padEnd(13) + 
-          String(row.created_by).padEnd(13) + 
-          (row.title || "").padEnd(25) + 
-          String(row.start_time || "").padEnd(23) + 
-          String(row.end_time || "").padEnd(23) + 
-          (row.location || "Online").padEnd(18) + 
+        const barisData =
+          String(row.id).padEnd(6) +
+          String(row.company_id).padEnd(13) +
+          String(row.created_by).padEnd(13) +
+          (row.title || "").padEnd(25) +
+          String(row.start_time || "").padEnd(23) +
+          String(row.end_time || "").padEnd(23) +
+          (row.location || "Online").padEnd(18) +
           tanggalRingkas;
 
         console.log(barisData);
       });
-      
+
       console.log("-".repeat(header.length + 2) + "\n");
     }
 
@@ -975,19 +975,19 @@ app.delete("/api/deleteSchedule/:id", async (req, res) => {
 });
 
 
-  /* ========================================================
-    ATTENDANCE 
-  ======================================================== */
+/* ========================================================
+  ATTENDANCE 
+======================================================== */
 app.get("/api/getAttendancesByCompanyId/:company_id", async (req, res) => {
-    // Ambil parameter company_id dari URL routing Retrofit
-    const companyId = req.params.company_id;
-    const logTimestamp = new Date().toLocaleString("id-ID");
+  // Ambil parameter company_id dari URL routing Retrofit
+  const companyId = req.params.company_id;
+  const logTimestamp = new Date().toLocaleString("id-ID");
 
-    console.log(`\n[${logTimestamp}] 🔍 ADMIN MONITORING: Menarik data absensi untuk Company ID: ${companyId}`);
+  console.log(`\n[${logTimestamp}] 🔍 ADMIN MONITORING: Menarik data absensi untuk Company ID: ${companyId}`);
 
-    try {
-        // Kueri SQL JOIN Berantai untuk menembus company_id yang ada di tabel schedules
-        const querySql = `
+  try {
+    // Kueri SQL JOIN Berantai untuk menembus company_id yang ada di tabel schedules
+    const querySql = `
             SELECT 
                 a.id, 
                 a.assignment_id, 
@@ -1003,52 +1003,52 @@ app.get("/api/getAttendancesByCompanyId/:company_id", async (req, res) => {
             ORDER BY a.created_at DESC
         `;
 
-        // Eksekusi kueri ke database MySQL cloud
-        const [rows] = await db.query(querySql, [parseInt(companyId)]);
+    // Eksekusi kueri ke database MySQL cloud
+    const [rows] = await db.query(querySql, [parseInt(companyId)]);
 
-        // =========================================================================
-        // 💡 LOG DEBUGGING DATA YANG TERKIRIM KE ANDROID (EduStaff Pro)
-        // =========================================================================
-        console.log(`[${logTimestamp}] ✅ Sukses menemukan ${rows.length} rekam absensi staff.`);
-        
-        if (rows.length > 0) {
-            console.log(`[${logTimestamp}] 📋 Sampel data teratas yang dikirim ke Android (Max 3 baris):`);
-            rows.slice(0, 3).forEach((row, index) => {
-                console.log(`   👉 [Baris ${index + 1}] ID Absen: ${row.id} | Assignment ID: ${row.assignment_id}`);
-                console.log(`      • check_in  (Tipe: ${typeof row.check_in})  -> ${row.check_in}`);
-                console.log(`      • check_out (Tipe: ${typeof row.check_out}) -> ${row.check_out}`);
-                console.log(`      • status    -> ${row.status} | sync_status -> ${row.sync_status}`);
-            });
-        } else {
-            console.log(`[${logTimestamp}] ⚠️ Data kosong untuk Company ID ${companyId}, mengirim array kosong []`);
-        }
-        // =========================================================================
+    // =========================================================================
+    // 💡 LOG DEBUGGING DATA YANG TERKIRIM KE ANDROID (EduStaff Pro)
+    // =========================================================================
+    console.log(`[${logTimestamp}] ✅ Sukses menemukan ${rows.length} rekam absensi staff.`);
 
-        // Kembalikan data dalam bentuk Array JSON (Retrofit: List<AttendanceJson>)
-        return res.status(200).json(rows);
-
-    } catch (err) {
-        console.error(`[${logTimestamp}] ❌ Database Error pada getAttendancesByCompanyId:`, err.message);
-        return res.status(500).json({ 
-            error: "Gagal menarik data monitoring absensi dari server cloud.", 
-            details: err.message 
-        });
+    if (rows.length > 0) {
+      console.log(`[${logTimestamp}] 📋 Sampel data teratas yang dikirim ke Android (Max 3 baris):`);
+      rows.slice(0, 3).forEach((row, index) => {
+        console.log(`   👉 [Baris ${index + 1}] ID Absen: ${row.id} | Assignment ID: ${row.assignment_id}`);
+        console.log(`      • check_in  (Tipe: ${typeof row.check_in})  -> ${row.check_in}`);
+        console.log(`      • check_out (Tipe: ${typeof row.check_out}) -> ${row.check_out}`);
+        console.log(`      • status    -> ${row.status} | sync_status -> ${row.sync_status}`);
+      });
+    } else {
+      console.log(`[${logTimestamp}] ⚠️ Data kosong untuk Company ID ${companyId}, mengirim array kosong []`);
     }
+    // =========================================================================
+
+    // Kembalikan data dalam bentuk Array JSON (Retrofit: List<AttendanceJson>)
+    return res.status(200).json(rows);
+
+  } catch (err) {
+    console.error(`[${logTimestamp}] ❌ Database Error pada getAttendancesByCompanyId:`, err.message);
+    return res.status(500).json({
+      error: "Gagal menarik data monitoring absensi dari server cloud.",
+      details: err.message
+    });
+  }
 });
 
-  /* ========================================================
-    ATTENDANCE REAL-TIME LOG & AI REPORT GENERATOR (HTTP REST)
-  ======================================================== */
-  app.get("/api/getAttendanceReport/:company_id", async (req, res) => {
-    try {
-      const { company_id } = req.params;
-      const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+/* ========================================================
+  ATTENDANCE REAL-TIME LOG & AI REPORT GENERATOR (HTTP REST)
+======================================================== */
+app.get("/api/getAttendanceReport/:company_id", async (req, res) => {
+  try {
+    const { company_id } = req.params;
+    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-      console.log(`\n📊 [HTTP REST API] Memproses data laporan absensi Company ID #${company_id}`);
+    console.log(`\n📊 [HTTP REST API] Memproses data laporan absensi Company ID #${company_id}`);
 
-      // 1. Ambil data gabungan absensi
-      const [attendanceLogs] = await db.query(
-        `SELECT 
+    // 1. Ambil data gabungan absensi
+    const [attendanceLogs] = await db.query(
+      `SELECT 
           a.id as attendance_id, u.full_name, u.username, s.title as shift_title,
           s.start_time, s.end_time, a.check_in, a.check_out
         FROM attendances a
@@ -1056,19 +1056,19 @@ app.get("/api/getAttendancesByCompanyId/:company_id", async (req, res) => {
         JOIN schedules s ON am.schedule_id = s.id
         JOIN users u ON am.user_id = u.id
         WHERE u.company_id = ? AND DATE(a.check_in) = CURDATE()`,
-        [parseInt(company_id)]
-      );
+      [parseInt(company_id)]
+    );
 
-      if (attendanceLogs.length === 0) {
-        return res.json({ logs: [], ai_summary: "Tidak ada aktivitas absensi atau shift yang berjalan pada hari ini." });
-      }
+    if (attendanceLogs.length === 0) {
+      return res.json({ logs: [], ai_summary: "Tidak ada aktivitas absensi atau shift yang berjalan pada hari ini." });
+    }
 
-      // PERBAIKAN: Ubah v1 menjadi v1beta agar mendukung penuh properti response_mime_type
-      const GEMINI_URL =
-`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-      const dataMentahAbsen = JSON.stringify(attendanceLogs);
-      
-      const instructionPrompt = `
+    // PERBAIKAN: Ubah v1 menjadi v1beta agar mendukung penuh properti response_mime_type
+    const GEMINI_URL =
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+    const dataMentahAbsen = JSON.stringify(attendanceLogs);
+
+    const instructionPrompt = `
         Kamu adalah Manajer Operasional HRD Senior. Di bawah ini adalah data mentah log absensi shift karyawan hari ini dalam format JSON.
         Tugasmu adalah menganalisis data tersebut dan memberikan 1 paragraf ringkasan eksekutif (maksimal 4 kalimat) dalam Bahasa Indonesia resmi mengenai performa kehadiran hari ini, apakah ada keterlambatan, atau semua berjalan optimal.
         
@@ -1076,92 +1076,92 @@ app.get("/api/getAttendancesByCompanyId/:company_id", async (req, res) => {
         ${dataMentahAbsen}
       `;
 
-      // Laporan PDF membutuhkan teks paragraf bebas, jadi generation_config dikosongkan saja
-      const payloadReport = {
-        contents: [{ parts: [{ text: instructionPrompt }] }]
-      };
+    // Laporan PDF membutuhkan teks paragraf bebas, jadi generation_config dikosongkan saja
+    const payloadReport = {
+      contents: [{ parts: [{ text: instructionPrompt }] }]
+    };
 
-      const aiResponse = await fetch(GEMINI_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payloadReport) // ⬅️ Pastikan nama variabel sinkron
-      });
+    const aiResponse = await fetch(GEMINI_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payloadReport) // ⬅️ Pastikan nama variabel sinkron
+    });
 
-      let aiSummaryText = "Gagal memuat ringkasan otomatis AI.";
+    let aiSummaryText = "Gagal memuat ringkasan otomatis AI.";
 
-      if (aiResponse.ok) {
-        const aiDataParsed = await aiResponse.json();
-        aiSummaryText = aiDataParsed.candidates[0].content.parts[0].text.trim();
-      } else {
-        console.error("⚠️ Google Gemini API (PDF) merespon dengan error:", await aiResponse.text());
-      }
-
-      return res.json({ logs: attendanceLogs, ai_summary: aiSummaryText });
-
-    } catch (err) {
-      console.error("❌ BACKEND REPORT ERROR:", err.message);
-      return res.status(500).json({ error: "Gagal memproses laporan: " + err.message });
+    if (aiResponse.ok) {
+      const aiDataParsed = await aiResponse.json();
+      aiSummaryText = aiDataParsed.candidates[0].content.parts[0].text.trim();
+    } else {
+      console.error("⚠️ Google Gemini API (PDF) merespon dengan error:", await aiResponse.text());
     }
-  });
 
-  /* =========================
-    ASSIGNMENTS
-  ========================= */
+    return res.json({ logs: attendanceLogs, ai_summary: aiSummaryText });
 
-  app.post("/api/insertAssignments", (req, res) => {
+  } catch (err) {
+    console.error("❌ BACKEND REPORT ERROR:", err.message);
+    return res.status(500).json({ error: "Gagal memproses laporan: " + err.message });
+  }
+});
 
-    const {
+/* =========================
+  ASSIGNMENTS
+========================= */
+
+app.post("/api/insertAssignments", (req, res) => {
+
+  const {
+    schedule_id,
+    user_id,
+    role_in_event,
+    job_desc
+  } = req.body;
+
+  db.query(
+    `INSERT INTO assignments
+      (schedule_id, user_id, role_in_event, job_desc)
+      VALUES (?, ?, ?, ?)`,
+    [
       schedule_id,
       user_id,
       role_in_event,
       job_desc
-    } = req.body;
+    ],
+    (err, result) => {
 
-    db.query(
-      `INSERT INTO assignments
-      (schedule_id, user_id, role_in_event, job_desc)
-      VALUES (?, ?, ?, ?)`,
-      [
+      if (err) {
+        return res.status(500).json({
+          error: err.message
+        });
+      }
+
+      // auto notification
+      db.query(
+        `INSERT INTO notifications
+          (user_id, title, message, type)
+          VALUES (?, 'New Assignment', 'You got a new assignment', 'assignment')`,
+        [user_id]
+      );
+
+      res.json({
+        id: result.insertId,
         schedule_id,
         user_id,
         role_in_event,
         job_desc
-      ],
-      (err, result) => {
-
-        if (err) {
-          return res.status(500).json({
-            error: err.message
-          });
-        }
-
-        // auto notification
-        db.query(
-          `INSERT INTO notifications
-          (user_id, title, message, type)
-          VALUES (?, 'New Assignment', 'You got a new assignment', 'assignment')`,
-          [user_id]
-        );
-
-        res.json({
-          id: result.insertId,
-          schedule_id,
-          user_id,
-          role_in_event,
-          job_desc
-        });
-      }
-    );
-  });
+      });
+    }
+  );
+});
 
 
 
-  app.get("/api/getAssignmentsByUserId/:user_id", (req, res) => {
+app.get("/api/getAssignmentsByUserId/:user_id", (req, res) => {
 
-    const { user_id } = req.params;
+  const { user_id } = req.params;
 
-    db.query(
-      `SELECT
+  db.query(
+    `SELECT
         a.*,
         s.title,
         s.start_time,
@@ -1170,187 +1170,187 @@ app.get("/api/getAttendancesByCompanyId/:company_id", async (req, res) => {
       FROM assignments a
       JOIN schedules s ON a.schedule_id = s.id
       WHERE a.user_id = ?`,
-      [user_id],
-      (err, results) => {
+    [user_id],
+    (err, results) => {
 
-        if (err) {
-          return res.status(500).json({
-            error: err.message
-          });
-        }
-
-        res.json(results);
+      if (err) {
+        return res.status(500).json({
+          error: err.message
+        });
       }
-    );
-  });
 
-  /* =========================
-    ATTENDANCES
-  ========================= */
+      res.json(results);
+    }
+  );
+});
 
-  app.post("/api/insertAttendance/checkin", (req, res) => {
+/* =========================
+  ATTENDANCES
+========================= */
 
-    const { assignment_id } = req.body;
+app.post("/api/insertAttendance/checkin", (req, res) => {
 
-    db.query(
-      `INSERT INTO attendances
+  const { assignment_id } = req.body;
+
+  db.query(
+    `INSERT INTO attendances
       (assignment_id, check_in)
       VALUES (?, NOW())`,
-      [assignment_id],
-      (err, result) => {
+    [assignment_id],
+    (err, result) => {
 
-        if (err) {
-          return res.status(500).json({
-            error: err.message
-          });
-        }
-
-        res.json({
-          id: result.insertId,
-          assignment_id,
-          check_in: new Date()
+      if (err) {
+        return res.status(500).json({
+          error: err.message
         });
       }
-    );
-  });
 
-  app.post("/api/updateAttendance/checkout", (req, res) => {
+      res.json({
+        id: result.insertId,
+        assignment_id,
+        check_in: new Date()
+      });
+    }
+  );
+});
 
-    const { assignment_id } = req.body;
+app.post("/api/updateAttendance/checkout", (req, res) => {
 
-    db.query(
-      `UPDATE attendances
+  const { assignment_id } = req.body;
+
+  db.query(
+    `UPDATE attendances
       SET check_out = NOW()
       WHERE assignment_id = ?`,
-      [assignment_id],
-      (err) => {
+    [assignment_id],
+    (err) => {
 
-        if (err) {
-          return res.status(500).json({
-            error: err.message
-          });
-        }
-
-        res.json({
-          assignment_id,
-          check_out: new Date(),
-          message: "Check-out success"
+      if (err) {
+        return res.status(500).json({
+          error: err.message
         });
       }
-    );
-  });
 
-  /* =========================
-    REPLACEMENTS
-  ========================= */
+      res.json({
+        assignment_id,
+        check_out: new Date(),
+        message: "Check-out success"
+      });
+    }
+  );
+});
 
-  app.post("/api/insertReplacements", (req, res) => {
+/* =========================
+  REPLACEMENTS
+========================= */
 
-    const {
+app.post("/api/insertReplacements", (req, res) => {
+
+  const {
+    assignment_id,
+    requested_by,
+    reason
+  } = req.body;
+
+  db.query(
+    `INSERT INTO replacements
+      (assignment_id, requested_by, reason)
+      VALUES (?, ?, ?)`,
+    [
       assignment_id,
       requested_by,
       reason
-    } = req.body;
+    ],
+    (err, result) => {
 
-    db.query(
-      `INSERT INTO replacements
-      (assignment_id, requested_by, reason)
-      VALUES (?, ?, ?)`,
-      [
+      if (err) {
+        return res.status(500).json({
+          error: err.message
+        });
+      }
+
+      res.json({
+        id: result.insertId,
         assignment_id,
         requested_by,
         reason
-      ],
-      (err, result) => {
+      });
+    }
+  );
+});
 
-        if (err) {
-          return res.status(500).json({
-            error: err.message
-          });
-        }
+/* =========================
+  AI RECOMMENDATIONS
+========================= */
 
-        res.json({
-          id: result.insertId,
-          assignment_id,
-          requested_by,
-          reason
-        });
-      }
-    );
-  });
+app.post("/api/insertAi-recommendations", (req, res) => {
 
-  /* =========================
-    AI RECOMMENDATIONS
-  ========================= */
+  const {
+    schedule_id,
+    recommended_user_id,
+    score,
+    reason
+  } = req.body;
 
-  app.post("/api/insertAi-recommendations", (req, res) => {
-
-    const {
+  db.query(
+    `INSERT INTO ai_recommendations
+      (schedule_id, recommended_user_id, score, reason)
+      VALUES (?, ?, ?, ?)`,
+    [
       schedule_id,
       recommended_user_id,
       score,
       reason
-    } = req.body;
+    ],
+    (err, result) => {
 
-    db.query(
-      `INSERT INTO ai_recommendations
-      (schedule_id, recommended_user_id, score, reason)
-      VALUES (?, ?, ?, ?)`,
-      [
+      if (err) {
+        return res.status(500).json({
+          error: err.message
+        });
+      }
+
+      res.json({
+        id: result.insertId,
         schedule_id,
         recommended_user_id,
         score,
         reason
-      ],
-      (err, result) => {
+      });
+    }
+  );
+});
 
-        if (err) {
-          return res.status(500).json({
-            error: err.message
-          });
-        }
+app.get("/api/getAi-recommendations/:schedule_id", (req, res) => {
 
-        res.json({
-          id: result.insertId,
-          schedule_id,
-          recommended_user_id,
-          score,
-          reason
+  const { schedule_id } = req.params;
+
+  db.query(
+    "SELECT * FROM ai_recommendations WHERE schedule_id = ?",
+    [schedule_id],
+    (err, results) => {
+
+      if (err) {
+        return res.status(500).json({
+          error: err.message
         });
       }
-    );
-  });
 
-  app.get("/api/getAi-recommendations/:schedule_id", (req, res) => {
+      res.json(results);
+    }
+  );
+});
 
-    const { schedule_id } = req.params;
+// REVISI ENDPOINT: Amankan konversi string data text & tracking log
+app.get("/api/getLeaveRequestsCompany/:company_id", async (req, res) => {
+  try {
+    const { company_id } = req.params;
 
-    db.query(
-      "SELECT * FROM ai_recommendations WHERE schedule_id = ?",
-      [schedule_id],
-      (err, results) => {
+    console.log(`\n🔍 [TRACKING] Laravel sedang meminta data izin untuk Company ID: ${company_id}`);
 
-        if (err) {
-          return res.status(500).json({
-            error: err.message
-          });
-        }
-
-        res.json(results);
-      }
-    );
-  });
-
-  // REVISI ENDPOINT: Amankan konversi string data text & tracking log
-  app.get("/api/getLeaveRequestsCompany/:company_id", async (req, res) => {
-    try {
-      const { company_id } = req.params;
-
-      console.log(`\n🔍 [TRACKING] Laravel sedang meminta data izin untuk Company ID: ${company_id}`);
-
-      // Kita gunakan CAST atau jamin kolom text terkonversi menjadi string biasa
-      const [results] = await db.query(
-        `SELECT 
+    // Kita gunakan CAST atau jamin kolom text terkonversi menjadi string biasa
+    const [results] = await db.query(
+      `SELECT 
           r.id,
           r.assignment_id,
           r.requested_by,
@@ -1364,18 +1364,18 @@ app.get("/api/getAttendancesByCompanyId/:company_id", async (req, res) => {
         JOIN users u ON r.requested_by = u.id
         WHERE u.company_id = ?
         ORDER BY r.id DESC`,
-        [parseInt(company_id)]
-      );
+      [parseInt(company_id)]
+    );
 
-      // PENTING: Pantau di terminal Node.js kamu apakah array ini ada isinya atau []
-      console.log("📦 Data yang berhasil diambil dari MySQL:", results);
+    // PENTING: Pantau di terminal Node.js kamu apakah array ini ada isinya atau []
+    console.log("📦 Data yang berhasil diambil dari MySQL:", results);
 
-      return res.json(results);
-    } catch (err) {
-      console.error("❌ ERROR pada getLeaveRequestsCompany:", err.message);
-      return res.status(500).json({ error: err.message });
-    }
-  });
+    return res.json(results);
+  } catch (err) {
+    console.error("❌ ERROR pada getLeaveRequestsCompany:", err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
 
 /* ========================================================
    WEEKLY WORKLOAD MONITORING SYSTEM - FINAL FIXED
@@ -1439,10 +1439,10 @@ app.get("/api/getWeeklyWorkload/:company_id", async (req, res) => {
   }
 });
 
-  /* ========================================================
-    AI LEAVE VALIDATION - VERSI REST API HTTP MURNI (NO SDK)
-  ======================================================== */
-  app.post("/api/analyze-leave-request", async (req, res) => {
+/* ========================================================
+  AI LEAVE VALIDATION - VERSI REST API HTTP MURNI (NO SDK)
+======================================================== */
+app.post("/api/analyze-leave-request", async (req, res) => {
   try {
     const { reason } = req.body;
 
@@ -1463,23 +1463,23 @@ app.get("/api/getWeeklyWorkload/:company_id", async (req, res) => {
     `;
 
     const payloadAnalyze = {
-  contents: [
-    {
-      parts: [
+      contents: [
         {
-          text: `Aturan:\n${systemInstruction}\n\nNilailah teks ini: "${reason}"`
+          parts: [
+            {
+              text: `Aturan:\n${systemInstruction}\n\nNilailah teks ini: "${reason}"`
+            }
+          ]
         }
-      ]
-    }
-  ],
-  generationConfig: {
-    responseMimeType: "application/json"
-  }
-};
+      ],
+      generationConfig: {
+        responseMimeType: "application/json"
+      }
+    };
 
     let apiResponse;
     let retries = 3; // Sistem akan otomatis mencoba mengetuk pintu Google hingga 3 kali jika terjadi error 503
-    
+
     while (retries > 0) {
       apiResponse = await fetch(GEMINI_URL, {
         method: "POST",
@@ -1499,12 +1499,12 @@ app.get("/api/getWeeklyWorkload/:company_id", async (req, res) => {
     // JIKA GOOGLE API TERNYATA BENAR-BENAR DOWN (TETAP SIBUK SETELAH 3X RETRY)
     if (!apiResponse.ok && apiResponse.status === 503) {
       console.log("fallback 💡 Mengaktifkan sistem penyaringan cadangan internal (HRD Local Engine)...");
-      
+
       // Deteksi kata kunci darurat secara manual menggunakan Regex Local Server
       const kataKunciDarurat = /kecelakaan|sakit|ugd|rs|rumah sakit|dokter|musibah|meninggal|kejang/i;
       const isValidLocal = kataKunciDarurat.test(reason) ? 1 : 0;
-      const reasonLocal = isValidLocal === 1 
-        ? "Validasi Cadangan: Alasan terdeteksi mengandung unsur kedaruratan medis/force majeure (Disetujui HRD Engine)." 
+      const reasonLocal = isValidLocal === 1
+        ? "Validasi Cadangan: Alasan terdeteksi mengandung unsur kedaruratan medis/force majeure (Disetujui HRD Engine)."
         : "Validasi Cadangan: Alasan terdeteksi minim indikasi kedaruratan medis mendesak (Ditinjau Ulang).";
 
       return res.json({
@@ -1570,8 +1570,8 @@ app.get("/api/getTodayAttendanceLog/:company_id", async (req, res) => {
   }
 });
 
-  /* ========================================================
-   ACTION: ADMIN MEMUTUSKAN STATUS PERMOHONAN IZIN (APPROVE / REJECT)
+/* ========================================================
+ ACTION: ADMIN MEMUTUSKAN STATUS PERMOHONAN IZIN (APPROVE / REJECT)
 ======================================================== */
 app.post("/api/respond-leave-request", async (req, res) => {
   try {
@@ -1629,190 +1629,190 @@ app.post("/api/respond-leave-request", async (req, res) => {
 });
 
 
-  /* =========================
-    NOTIFICATIONS
-  ========================= */
+/* =========================
+  NOTIFICATIONS
+========================= */
 
-  app.get("/api/getNotificationsByUserId/:user_id", (req, res) => {
+app.get("/api/getNotificationsByUserId/:user_id", (req, res) => {
 
-    const { user_id } = req.params;
+  const { user_id } = req.params;
 
-    db.query(
-      `SELECT *
+  db.query(
+    `SELECT *
       FROM notifications
       WHERE user_id = ?
       ORDER BY created_at DESC`,
-      [user_id],
-      (err, results) => {
+    [user_id],
+    (err, results) => {
 
-        if (err) {
-          return res.status(500).json({
-            error: err.message
-          });
-        }
-
-        res.json(results);
-      }
-    );
-  });
-
-  app.put("/api/updateNotifications/:id/read", (req, res) => {
-
-    const { id } = req.params;
-
-    db.query(
-      `UPDATE notifications
-      SET is_read = TRUE
-      WHERE id = ?`,
-      [id],
-      (err) => {
-
-        if (err) {
-          return res.status(500).json({
-            error: err.message
-          });
-        }
-
-        res.json({
-          id,
-          is_read: true,
-          message: "Marked as read"
+      if (err) {
+        return res.status(500).json({
+          error: err.message
         });
       }
-    );
-  });
 
-  /* =========================
-    RESOURCES
-  ========================= */
+      res.json(results);
+    }
+  );
+});
 
-  app.post("/api/insertResources", (req, res) => {
+app.put("/api/updateNotifications/:id/read", (req, res) => {
 
-    const {
+  const { id } = req.params;
+
+  db.query(
+    `UPDATE notifications
+      SET is_read = TRUE
+      WHERE id = ?`,
+    [id],
+    (err) => {
+
+      if (err) {
+        return res.status(500).json({
+          error: err.message
+        });
+      }
+
+      res.json({
+        id,
+        is_read: true,
+        message: "Marked as read"
+      });
+    }
+  );
+});
+
+/* =========================
+  RESOURCES
+========================= */
+
+app.post("/api/insertResources", (req, res) => {
+
+  const {
+    schedule_id,
+    title,
+    content,
+    file_url
+  } = req.body;
+
+  db.query(
+    `INSERT INTO resources
+      (schedule_id, title, content, file_url)
+      VALUES (?, ?, ?, ?)`,
+    [
       schedule_id,
       title,
       content,
       file_url
-    } = req.body;
+    ],
+    (err, result) => {
 
-    db.query(
-      `INSERT INTO resources
-      (schedule_id, title, content, file_url)
-      VALUES (?, ?, ?, ?)`,
-      [
+      if (err) {
+        return res.status(500).json({
+          error: err.message
+        });
+      }
+
+      res.json({
+        id: result.insertId,
         schedule_id,
         title,
         content,
         file_url
-      ],
-      (err, result) => {
+      });
+    }
+  );
+});
 
-        if (err) {
-          return res.status(500).json({
-            error: err.message
-          });
-        }
+app.get("/api/getResources/:schedule_id", (req, res) => {
 
-        res.json({
-          id: result.insertId,
-          schedule_id,
-          title,
-          content,
-          file_url
+  const { schedule_id } = req.params;
+
+  db.query(
+    "SELECT * FROM resources WHERE schedule_id = ?",
+    [schedule_id],
+    (err, results) => {
+
+      if (err) {
+        return res.status(500).json({
+          error: err.message
         });
       }
-    );
-  });
 
-  app.get("/api/getResources/:schedule_id", (req, res) => {
+      res.json(results);
+    }
+  );
+});
 
-    const { schedule_id } = req.params;
+/* =========================
+  ANNOUNCEMENTS
+========================= */
 
-    db.query(
-      "SELECT * FROM resources WHERE schedule_id = ?",
-      [schedule_id],
-      (err, results) => {
+app.post("/api/insertAnnouncements", (req, res) => {
 
-        if (err) {
-          return res.status(500).json({
-            error: err.message
-          });
-        }
+  const {
+    title,
+    message,
+    created_by
+  } = req.body;
 
-        res.json(results);
-      }
-    );
-  });
-
-  /* =========================
-    ANNOUNCEMENTS
-  ========================= */
-
-  app.post("/api/insertAnnouncements", (req, res) => {
-
-    const {
+  db.query(
+    `INSERT INTO announcements
+      (title, message, created_by)
+      VALUES (?, ?, ?)`,
+    [
       title,
       message,
       created_by
-    } = req.body;
+    ],
+    (err, result) => {
 
-    db.query(
-      `INSERT INTO announcements
-      (title, message, created_by)
-      VALUES (?, ?, ?)`,
-      [
+      if (err) {
+        return res.status(500).json({
+          error: err.message
+        });
+      }
+
+      res.json({
+        id: result.insertId,
         title,
         message,
         created_by
-      ],
-      (err, result) => {
+      });
+    }
+  );
+});
 
-        if (err) {
-          return res.status(500).json({
-            error: err.message
-          });
-        }
+app.get("/api/getAllAnnouncements", (req, res) => {
 
-        res.json({
-          id: result.insertId,
-          title,
-          message,
-          created_by
+  db.query(
+    "SELECT * FROM announcements",
+    (err, results) => {
+
+      if (err) {
+        return res.status(500).json({
+          error: err.message
         });
       }
-    );
-  });
 
-  app.get("/api/getAllAnnouncements", (req, res) => {
+      res.json(results);
+    }
+  );
+});
 
-    db.query(
-      "SELECT * FROM announcements",
-      (err, results) => {
+// staff attendance
+app.get("/api/getAttendancesByUserId/:user_id", async (req, res) => {
+  // Ambil parameter user_id dari URL
+  const userId = req.params.user_id;
+  const logTimestamp = new Date().toLocaleString("id-ID");
 
-        if (err) {
-          return res.status(500).json({
-            error: err.message
-          });
-        }
+  console.log(
+    `\n[${logTimestamp}] 👤 STAFF ATTENDANCE: Menarik data absensi untuk User ID: ${userId}`
+  );
 
-        res.json(results);
-      }
-    );
-  });
-
-  // staff attendance
-    app.get("/api/getAttendancesByUserId/:user_id", async (req, res) => {
-      // Ambil parameter user_id dari URL
-      const userId = req.params.user_id;
-      const logTimestamp = new Date().toLocaleString("id-ID");
-
-      console.log(
-          `\n[${logTimestamp}] 👤 STAFF ATTENDANCE: Menarik data absensi untuk User ID: ${userId}`
-      );
-
-      try {
-          // Query attendance berdasarkan user yang terhubung melalui assignments
-          const querySql = `
+  try {
+    // Query attendance berdasarkan user yang terhubung melalui assignments
+    const querySql = `
             SELECT
                 ad.id,
                 ad.assignment_id,
@@ -1835,84 +1835,84 @@ app.post("/api/respond-leave-request", async (req, res) => {
             ORDER BY ad.created_at DESC;
           `;
 
-          const [rows] = await db.query(
-              querySql,
-              [parseInt(userId)]
-          );
+    const [rows] = await db.query(
+      querySql,
+      [parseInt(userId)]
+    );
 
-          // ============================================================
-          // DEBUG LOG
-          // ============================================================
-          console.log(
-              `[${logTimestamp}] ✅ Ditemukan ${rows.length} data absensi untuk User ID ${userId}`
-          );
+    // ============================================================
+    // DEBUG LOG
+    // ============================================================
+    console.log(
+      `[${logTimestamp}] ✅ Ditemukan ${rows.length} data absensi untuk User ID ${userId}`
+    );
 
-          if (rows.length > 0) {
-              console.log(
-                  `[${logTimestamp}] 📋 Sampel data yang dikirim ke Android (Max 3 baris):`
-              );
+    if (rows.length > 0) {
+      console.log(
+        `[${logTimestamp}] 📋 Sampel data yang dikirim ke Android (Max 3 baris):`
+      );
 
-              rows.slice(0, 3).forEach((row, index) => {
-                  console.log(
-                      `   👉 [Baris ${index + 1}] Attendance ID: ${row.id}`
-                  );
-                  console.log(
-                      `      • assignment_id -> ${row.assignment_id}`
-                  );
-                  console.log(
-                      `      • check_in      -> ${row.check_in}`
-                  );
-                  console.log(
-                      `      • check_out     -> ${row.check_out}`
-                  );
-                  console.log(
-                      `      • status        -> ${row.status}`
-                  );
-              });
-          } else {
-              console.log(
-                  `[${logTimestamp}] ⚠️ Tidak ada data absensi untuk User ID ${userId}`
-              );
-          }
-          // ============================================================
+      rows.slice(0, 3).forEach((row, index) => {
+        console.log(
+          `   👉 [Baris ${index + 1}] Attendance ID: ${row.id}`
+        );
+        console.log(
+          `      • assignment_id -> ${row.assignment_id}`
+        );
+        console.log(
+          `      • check_in      -> ${row.check_in}`
+        );
+        console.log(
+          `      • check_out     -> ${row.check_out}`
+        );
+        console.log(
+          `      • status        -> ${row.status}`
+        );
+      });
+    } else {
+      console.log(
+        `[${logTimestamp}] ⚠️ Tidak ada data absensi untuk User ID ${userId}`
+      );
+    }
+    // ============================================================
 
-          return res.status(200).json(rows);
+    return res.status(200).json(rows);
 
-      } catch (err) {
-          console.error(
-              `[${logTimestamp}] ❌ Database Error pada getAttendancesByUserId:`,
-              err.message
-          );
+  } catch (err) {
+    console.error(
+      `[${logTimestamp}] ❌ Database Error pada getAttendancesByUserId:`,
+      err.message
+    );
 
-          return res.status(500).json({
-              error: "Gagal mengambil data absensi staff.",
-              details: err.message
-          });
-      }
-  });
+    return res.status(500).json({
+      error: "Gagal mengambil data absensi staff.",
+      details: err.message
+    });
+  }
+});
 
-  //staff check in
-    app.post("/api/checkIn", async (req, res) => {
-      const logTimestamp = new Date().toLocaleString("id-ID");
+//staff check in
+app.post("/api/checkIn", async (req, res) => {
+  const logTimestamp = new Date().toLocaleString("id-ID");
 
-      try {
+  try {
 
-          const { assignment_id } = req.body;
+    const { assignment_id } = req.body;
 
-          console.log(
-              `\n[${logTimestamp}] 📍 CHECK IN REQUEST | Assignment ID: ${assignment_id}`
-          );
+    console.log(
+      `\n[${logTimestamp}] 📍 CHECK IN REQUEST | Assignment ID: ${assignment_id}`
+    );
 
-          // Validasi input
-          if (!assignment_id) {
-              return res.status(400).json({
-                  error: "assignment_id wajib diisi"
-              });
-          }
+    // Validasi input
+    if (!assignment_id) {
+      return res.status(400).json({
+        error: "assignment_id wajib diisi"
+      });
+    }
 
-          // Cek assignment ada atau tidak
-          const [assignmentRows] = await db.query(
-              `
+    // Cek assignment ada atau tidak
+    const [assignmentRows] = await db.query(
+      `
               SELECT
                   ag.id,
                   ag.user_id,
@@ -1925,47 +1925,47 @@ app.post("/api/respond-leave-request", async (req, res) => {
                   ON ag.schedule_id = s.id
               WHERE ag.id = ?
               `,
-              [assignment_id]
-          );
+      [assignment_id]
+    );
 
-          if (assignmentRows.length === 0) {
-              return res.status(404).json({
-                  error: "Assignment tidak ditemukan"
-              });
-          }
+    if (assignmentRows.length === 0) {
+      return res.status(404).json({
+        error: "Assignment tidak ditemukan"
+      });
+    }
 
-          const assignment = assignmentRows[0];
+    const assignment = assignmentRows[0];
 
-          // Cek apakah sudah check in hari ini
-          const [existingAttendance] = await db.query(
-              `
+    // Cek apakah sudah check in hari ini
+    const [existingAttendance] = await db.query(
+      `
               SELECT *
               FROM attendances
               WHERE assignment_id = ?
               AND DATE(check_in) = CURDATE()
               `,
-              [assignment_id]
-          );
+      [assignment_id]
+    );
 
-          if (existingAttendance.length > 0) {
-              return res.status(409).json({
-                  error: "Staff sudah melakukan check in hari ini"
-              });
-          }
+    if (existingAttendance.length > 0) {
+      return res.status(409).json({
+        error: "Staff sudah melakukan check in hari ini"
+      });
+    }
 
-          // Tentukan status
-          const now = new Date();
-          const scheduleStart = new Date(assignment.start_time);
+    // Tentukan status
+    const now = new Date();
+    const scheduleStart = new Date(assignment.start_time);
 
-          let status = "present";
+    let status = "present";
 
-          if (now > scheduleStart) {
-              status = "late";
-          }
+    if (now > scheduleStart) {
+      status = "late";
+    }
 
-          // Simpan attendance
-          const [insertResult] = await db.query(
-              `
+    // Simpan attendance
+    const [insertResult] = await db.query(
+      `
               INSERT INTO attendances
               (
                   assignment_id,
@@ -1983,15 +1983,15 @@ app.post("/api/respond-leave-request", async (req, res) => {
                   NOW()
               )
               `,
-              [
-                  assignment_id,
-                  status
-              ]
-          );
+      [
+        assignment_id,
+        status
+      ]
+    );
 
-          // Ambil data yang baru dibuat
-          const [attendanceRows] = await db.query(
-              `
+    // Ambil data yang baru dibuat
+    const [attendanceRows] = await db.query(
+      `
               SELECT
                   id,
                   assignment_id,
@@ -2003,57 +2003,57 @@ app.post("/api/respond-leave-request", async (req, res) => {
               FROM attendances
               WHERE id = ?
               `,
-              [insertResult.insertId]
-          );
+      [insertResult.insertId]
+    );
 
-          console.log(
-              `[${logTimestamp}] ✅ Check In berhasil | Attendance ID: ${insertResult.insertId}`
-          );
+    console.log(
+      `[${logTimestamp}] ✅ Check In berhasil | Attendance ID: ${insertResult.insertId}`
+    );
 
-          return res.status(201).json({
-              success: true,
-              message: "Check In berhasil",
-              attendance: attendanceRows[0]
-          });
+    return res.status(201).json({
+      success: true,
+      message: "Check In berhasil",
+      attendance: attendanceRows[0]
+    });
 
-      } catch (err) {
+  } catch (err) {
 
-          console.error(
-              `[${logTimestamp}] ❌ Error Check In:`,
-              err.message
-          );
+    console.error(
+      `[${logTimestamp}] ❌ Error Check In:`,
+      err.message
+    );
 
-          return res.status(500).json({
-              success: false,
-              error: "Gagal melakukan Check In",
-              details: err.message
-          });
-      }
-  });
+    return res.status(500).json({
+      success: false,
+      error: "Gagal melakukan Check In",
+      details: err.message
+    });
+  }
+});
 
-  //staff check out
-    app.put("/api/checkOut/:attendance_id", async (req, res) => {
+//staff check out
+app.put("/api/checkOut/:attendance_id", async (req, res) => {
 
-      const attendanceId = parseInt(req.params.attendance_id);
-      const logTimestamp = new Date().toLocaleString("id-ID");
+  const attendanceId = parseInt(req.params.attendance_id);
+  const logTimestamp = new Date().toLocaleString("id-ID");
 
-      console.log(
-          `\n[${logTimestamp}] 📍 CHECK OUT REQUEST | Attendance ID: ${attendanceId}`
-      );
+  console.log(
+    `\n[${logTimestamp}] 📍 CHECK OUT REQUEST | Attendance ID: ${attendanceId}`
+  );
 
-      try {
+  try {
 
-          // Validasi ID
-          if (isNaN(attendanceId)) {
-              return res.status(400).json({
-                  success: false,
-                  error: "attendance_id harus berupa angka"
-              });
-          }
+    // Validasi ID
+    if (isNaN(attendanceId)) {
+      return res.status(400).json({
+        success: false,
+        error: "attendance_id harus berupa angka"
+      });
+    }
 
-          // Cek attendance ada atau tidak
-          const [attendanceRows] = await db.query(
-              `
+    // Cek attendance ada atau tidak
+    const [attendanceRows] = await db.query(
+      `
               SELECT
                   id,
                   assignment_id,
@@ -2063,41 +2063,41 @@ app.post("/api/respond-leave-request", async (req, res) => {
               FROM attendances
               WHERE id = ?
               `,
-              [attendanceId]
-          );
+      [attendanceId]
+    );
 
-          if (attendanceRows.length === 0) {
-              return res.status(404).json({
-                  success: false,
-                  error: "Attendance tidak ditemukan"
-              });
-          }
+    if (attendanceRows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: "Attendance tidak ditemukan"
+      });
+    }
 
-          const attendance = attendanceRows[0];
+    const attendance = attendanceRows[0];
 
-          // Sudah checkout?
-          if (attendance.check_out !== null) {
-              return res.status(409).json({
-                  success: false,
-                  error: "Attendance sudah melakukan check out"
-              });
-          }
+    // Sudah checkout?
+    if (attendance.check_out !== null) {
+      return res.status(409).json({
+        success: false,
+        error: "Attendance sudah melakukan check out"
+      });
+    }
 
-          // Update checkout
-          await db.query(
-              `
+    // Update checkout
+    await db.query(
+      `
               UPDATE attendances
               SET
                   check_out = NOW(),
                   sync_status = 'synced'
               WHERE id = ?
               `,
-              [attendanceId]
-          );
+      [attendanceId]
+    );
 
-          // Ambil data terbaru
-          const [updatedRows] = await db.query(
-              `
+    // Ambil data terbaru
+    const [updatedRows] = await db.query(
+      `
               SELECT
                   id,
                   assignment_id,
@@ -2109,50 +2109,52 @@ app.post("/api/respond-leave-request", async (req, res) => {
               FROM attendances
               WHERE id = ?
               `,
-              [attendanceId]
-          );
+      [attendanceId]
+    );
 
-          console.log(
-              `[${logTimestamp}] ✅ Check Out berhasil | Attendance ID: ${attendanceId}`
-          );
+    console.log(
+      `[${logTimestamp}] ✅ Check Out berhasil | Attendance ID: ${attendanceId}`
+    );
 
-          return res.status(200).json({
-              success: true,
-              message: "Check Out berhasil",
-              attendance: updatedRows[0]
-          });
+    return res.status(200).json({
+      success: true,
+      message: "Check Out berhasil",
+      attendance: updatedRows[0]
+    });
 
-      } catch (err) {
+  } catch (err) {
 
-          console.error(
-              `[${logTimestamp}] ❌ Error Check Out:`,
-              err.message
-          );
+    console.error(
+      `[${logTimestamp}] ❌ Error Check Out:`,
+      err.message
+    );
 
-          return res.status(500).json({
-              success: false,
-              error: "Gagal melakukan Check Out",
-              details: err.message
-          });
-      }
+    return res.status(500).json({
+      success: false,
+      error: "Gagal melakukan Check Out",
+      details: err.message
+    });
+  }
+});
+
+/* =========================
+  SERVER
+========================= */
+
+const PORT = 3000;
+
+initDb()
+  .then((connection) => {
+
+    db = connection;
+
+    app.listen(PORT, () => {
+      console.log(`Server running at http://localhost:${PORT}`);
+    });
+
+  })
+  .catch((err) => {
+    console.error("Server error:", err);
   });
 
-  /* =========================
-    SERVER
-  ========================= */
-
-  const PORT = 3000;
-
-  initDb()
-    .then((connection) => {
-
-      db = connection;
-
-      app.listen(PORT, () => {
-        console.log(`Server running at http://localhost:${PORT}`);
-      });
-
-    })
-    .catch((err) => {
-      console.error("Server error:", err);
-    });
+module.exports = app;
