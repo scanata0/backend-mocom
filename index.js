@@ -1156,32 +1156,64 @@ app.post("/api/insertAssignments", (req, res) => {
 
 
 
-app.get("/api/getAssignmentsByUserId/:user_id", (req, res) => {
+app.get("/api/getAssignmentsByUserId/:user_id", async (req, res) => {
 
-  const { user_id } = req.params;
+  try {
 
-  db.query(
-    `SELECT
-        a.*,
-        s.title,
-        s.start_time,
-        s.end_time,
-        s.location
+    const { user_id } = req.params;
+
+    console.log("REQUEST");
+    console.log(user_id);
+
+    const [results] = await db.query(
+      `
+        SELECT
+          a.id as assignment_id,
+          a.schedule_id,
+          a.user_id,
+          a.role_in_event,
+          a.job_desc,
+
+          s.title,
+          s.description,
+
+          DATE_FORMAT(
+              s.start_time,
+              '%Y-%m-%d %H:%i:%s'
+          ) as start_time,
+
+          DATE_FORMAT(
+              s.end_time,
+              '%Y-%m-%d %H:%i:%s'
+          ) as end_time,
+
+          s.location
+
       FROM assignments a
-      JOIN schedules s ON a.schedule_id = s.id
-      WHERE a.user_id = ?`,
-    [user_id],
-    (err, results) => {
+      JOIN schedules s
+      ON a.schedule_id = s.id
 
-      if (err) {
-        return res.status(500).json({
-          error: err.message
-        });
-      }
+      WHERE a.user_id = ?
+         `,
+      [parseInt(user_id)]
+    );
 
-      res.json(results);
-    }
-  );
+    console.log("RESULT");
+    console.log(results);
+
+    return res.json(results);
+
+  }
+  catch (err) {
+
+    console.log(err);
+
+    return res.status(500).json({
+      error: err.message
+    });
+
+  }
+
 });
 
 /* =========================
@@ -2148,8 +2180,10 @@ initDb()
 
     db = connection;
 
-    app.listen(PORT, () => {
-      console.log(`Server running at http://localhost:${PORT}`);
+    // Tambahkan '0.0.0.0' di sini agar Express mendengarkan semua interface jaringan
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server running at http://0.0.0.0:${PORT}`);
+      console.log(`Bisa diakses dari HP via IP lokal laptopmu (misal: http://192.168.42.177:3000)`);
     });
 
   })
@@ -2157,3 +2191,4 @@ initDb()
     console.error("Server error:", err);
   });
 
+module.exports = app;
