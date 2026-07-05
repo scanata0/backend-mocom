@@ -1362,29 +1362,59 @@ app.post("/api/updateAttendance/checkout", (req, res) => {
   REPLACEMENTS
 ========================= */
 
-app.post("/api/insertReplacements", (req, res) => {
-  const { assignment_id, requested_by, reason } = req.body;
+// 🟢 SEKARANG SUDAH ASYNC/AWAIT & MENAMPUNG REPLACEMENT_USER_ID (ORANG B)
+app.post("/api/insertReplacements", async (req, res) => {
+  const logTimestamp = new Date().toLocaleString("id-ID");
+  const { assignment_id, requested_by, replacement_user_id, reason } = req.body;
 
-  db.query(
-    `INSERT INTO replacements
-      (assignment_id, requested_by, reason)
-      VALUES (?, ?, ?)`,
-    [assignment_id, requested_by, reason],
-    (err, result) => {
-      if (err) {
-        return res.status(500).json({
-          error: err.message,
-        });
-      }
-
-      res.json({
-        id: result.insertId,
-        assignment_id,
-        requested_by,
-        reason,
-      });
-    },
+  console.log(
+    `\n[${logTimestamp}] 🔄 AJUAN PERIZINAN | User #${requested_by} ingin melempar Assignment #${assignment_id} ke User #${replacement_user_id}`,
   );
+
+  if (!assignment_id || !requested_by || !replacement_user_id || !reason) {
+    return res.status(400).json({
+      success: false,
+      message:
+        "Data tidak lengkap! Parameter assignment_id, requested_by, replacement_user_id, dan reason wajib diisi.",
+    });
+  }
+
+  try {
+    const [result] = await db.query(
+      `INSERT INTO replacements 
+        (assignment_id, requested_by, replacement_user_id, reason, status) 
+       VALUES (?, ?, ?, ?, 'pending')`,
+      [
+        parseInt(assignment_id),
+        parseInt(requested_by),
+        parseInt(replacement_user_id),
+        reason,
+      ],
+    );
+
+    console.log(
+      `[${logTimestamp}] ✅ Sukses mencatat permohonan izin di database dengan ID Request: #${result.insertId}`,
+    );
+
+    return res.json({
+      success: true,
+      id: result.insertId,
+      assignment_id,
+      requested_by,
+      replacement_user_id,
+      reason,
+      message: "Permohonan delegasi tugas berhasil dikirim ke Admin!",
+    });
+  } catch (err) {
+    console.error(
+      `[${logTimestamp}] ❌ Gagal mengisikan data permohonan:`,
+      err.message,
+    );
+    return res.status(500).json({
+      success: false,
+      error: err.message,
+    });
+  }
 });
 
 /* =========================
@@ -1698,6 +1728,7 @@ app.get("/api/getTodayAttendanceLog/:company_id", async (req, res) => {
 ======================================================== */
 app.post("/api/respond-leave-request", async (req, res) => {
   try {
+    // Note: replacement_id di sini adalah ID Baris dari tabel replacements
     const { replacement_id, action, ai_reason } = req.body;
 
     if (!replacement_id || !action) {
@@ -1706,9 +1737,9 @@ app.post("/api/respond-leave-request", async (req, res) => {
         .json({ success: false, error: "Data yang dikirimkan tidak lengkap." });
     }
 
-    // 1. Ambil informasi detail permohonan terlebih dahulu
+    // 1. Ambil informasi detail permohonan secara lengkap (tambahkan assignment_id dan replacement_user_id)
     const [leaveData] = await db.query(
-      "SELECT requested_by, reason FROM replacements WHERE id = ?",
+      "SELECT assignment_id, requested_by, replacement_user_id, reason FROM replacements WHERE id = ?",
       [parseInt(replacement_id)],
     );
 
@@ -1719,7 +1750,8 @@ app.post("/api/respond-leave-request", async (req, res) => {
       });
     }
 
-    const { requested_by, reason } = leaveData[0];
+    const { assignment_id, requested_by, replacement_user_id, reason } =
+      leaveData[0];
     const statusFinal = action === "approve" ? "approved" : "rejected";
     const statusTextIndo = action === "approve" ? "DISETUJUI" : "DITOLAK";
 
@@ -1727,7 +1759,7 @@ app.post("/api/respond-leave-request", async (req, res) => {
       `\n⚖️ [ACTION ADMIN] Memproses status baru untuk Permohonan ID #${replacement_id}: ${statusFinal}`,
     );
 
-    // 2. Update status permohonan beserta simpan catatan hasil evaluasi AI tadi ke database
+    // 2. Update status permohonan beserta simpan catatan hasil evaluasi AI ke database
     await db.query(
       `UPDATE replacements 
        SET status = ?, ai_reason = ? 
@@ -1735,7 +1767,18 @@ app.post("/api/respond-leave-request", async (req, res) => {
       [statusFinal, ai_reason || "", parseInt(replacement_id)],
     );
 
-    // 3. Suntik Notifikasi Otomatis ke Tabel 'notifications' untuk Staff Terkait
+    // 3. 🎯 LOGIKA UTAMA: Jika disetujui admin, tukar pemilik tugas di tabel assignments ke Orang B!
+    if (statusFinal === "approved") {
+      await db.query("UPDATE assignments SET user_id = ? WHERE id = ?", [
+        replacement_user_id,
+        assignment_id,
+      ]);
+      console.log(
+        `⚙️ [SHIFT TRANSMISSION] Tugas ID #${assignment_id} resmi dialihkan dari User #${requested_by} ke User #${replacement_user_id}`,
+      );
+    }
+
+    // 4. Suntik Notifikasi Otomatis ke Karyawan yang mengajukan (Orang A)
     const judulNotif = `Pengajuan Izin ${statusTextIndo}`;
     const pesanNotif = `Permohonan izin Anda dengan alasan "${reason.substring(0, 50)}..." telah ${statusFinal} oleh Admin.`;
 
@@ -1746,12 +1789,12 @@ app.post("/api/respond-leave-request", async (req, res) => {
     );
 
     console.log(
-      `🔔 Notifikasi berhasil dikirimkan ke User ID #${requested_by}`,
+      `🔔 Notifikasi konfirmasi berhasil dikirimkan ke User ID #${requested_by}`,
     );
 
     return res.json({
       success: true,
-      message: `Permohonan berhasil ${statusFinal} dan notifikasi telah dikirimkan ke staff.`,
+      message: `Permohonan berhasil ${statusFinal} dan tugas telah resmi disesuaikan.`,
     });
   } catch (err) {
     console.error("❌ BACKEND RESPOND LEAVE ERROR:", err.message);
