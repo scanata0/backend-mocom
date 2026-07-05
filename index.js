@@ -1108,80 +1108,183 @@ app.get("/api/getAttendancesByCompanyId/:company_id", async (req, res) => {
     ASSIGNMENTS
   ========================= */
 
-  app.post("/api/insertAssignments", (req, res) => {
-
-    const {
-      schedule_id,
-      user_id,
-      role_in_event,
-      job_desc
-    } = req.body;
-
-    db.query(
-      `INSERT INTO assignments
-      (schedule_id, user_id, role_in_event, job_desc)
-      VALUES (?, ?, ?, ?)`,
-      [
+  app.post("/api/insertAssignments", async (req, res) => {
+    try {
+      const {
         schedule_id,
         user_id,
         role_in_event,
-        job_desc
-      ],
-      (err, result) => {
+        job_desc,
+        assignment_date
+      } = req.body;
 
-        if (err) {
-          return res.status(500).json({
-            error: err.message
-          });
-        }
+      if (!assignment_date) {
+        return res.status(400).json({ error: "assignment_date is required" });
+      }
 
-        // auto notification
-        db.query(
+      // Cek apakah assignment sudah ada (schedule + user + tanggal yang sama)
+      const [existing] = await db.query(
+        `SELECT id FROM assignments WHERE schedule_id = ? AND user_id = ? AND assignment_date = ?`,
+        [schedule_id, user_id, assignment_date]
+      );
+
+      let resultId;
+
+      if (existing.length > 0) {
+        // Sudah ada → update saja
+        await db.query(
+          `UPDATE assignments SET role_in_event = ?, job_desc = ? WHERE id = ?`,
+          [role_in_event, job_desc, existing[0].id]
+        );
+        resultId = existing[0].id;
+      } else {
+        // Belum ada → insert baru
+        const [result] = await db.query(
+          `INSERT INTO assignments (schedule_id, user_id, role_in_event, job_desc, assignment_date)
+           VALUES (?, ?, ?, ?, ?)`,
+          [schedule_id, user_id, role_in_event, job_desc, assignment_date]
+        );
+        resultId = result.insertId;
+      }
+
+      // auto notification
+      try {
+        await db.query(
           `INSERT INTO notifications
           (user_id, title, message, type)
           VALUES (?, 'New Assignment', 'You got a new assignment', 'assignment')`,
           [user_id]
         );
-
-        res.json({
-          id: result.insertId,
-          schedule_id,
-          user_id,
-          role_in_event,
-          job_desc
-        });
+      } catch (notiErr) {
+        console.warn("⚠️ Warning: Gagal menyisipkan notifikasi otomatis:", notiErr.message);
       }
-    );
+
+      return res.json({
+        id: resultId,
+        schedule_id,
+        user_id,
+        role_in_event,
+        job_desc,
+        assignment_date
+      });
+    } catch (err) {
+      console.error("❌ BACKEND ERROR pada insertAssignments:", err.message);
+      return res.status(500).json({
+        error: err.message
+      });
+    }
   });
 
 
 
-  app.get("/api/getAssignmentsByUserId/:user_id", (req, res) => {
-
+  app.get("/api/getAssignmentsByUserId/:user_id", async (req, res) => {
     const { user_id } = req.params;
+    const { month, year } = req.query;
+    try {
+      let query = `SELECT
+          a.*,
+          s.title,
+          s.start_time,
+          s.end_time,
+          s.location
+        FROM assignments a
+        JOIN schedules s ON a.schedule_id = s.id
+        WHERE a.user_id = ?`;
+      const params = [user_id];
 
-    db.query(
-      `SELECT
-        a.*,
-        s.title,
-        s.start_time,
-        s.end_time,
-        s.location
-      FROM assignments a
-      JOIN schedules s ON a.schedule_id = s.id
-      WHERE a.user_id = ?`,
-      [user_id],
-      (err, results) => {
-
-        if (err) {
-          return res.status(500).json({
-            error: err.message
-          });
-        }
-
-        res.json(results);
+      // Filter per bulan & tahun (opsional)
+      if (month && year) {
+        query += ` AND MONTH(a.assignment_date) = ? AND YEAR(a.assignment_date) = ?`;
+        params.push(month, year);
+      } else if (year) {
+        query += ` AND YEAR(a.assignment_date) = ?`;
+        params.push(year);
       }
-    );
+
+      query += ` ORDER BY a.assignment_date ASC`;
+
+      const [results] = await db.query(query, params);
+      return res.json(results);
+    } catch (err) {
+      return res.status(500).json({
+        error: err.message
+      });
+    }
+  });
+
+  app.get("/api/getTodayAssignmentsByUserId/:user_id", async (req, res) => {
+    const { user_id } = req.params;
+    try {
+      const [results] = await db.query(
+        `SELECT
+          a.id AS assignment_id,
+          a.schedule_id,
+          a.user_id,
+          a.role_in_event,
+          a.job_desc,
+          a.assignment_date,
+          a.status,
+          a.assigned_at,
+          s.title,
+          s.description,
+          s.start_time,
+          s.end_time,
+          s.location
+        FROM assignments a
+        JOIN schedules s ON a.schedule_id = s.id
+        WHERE a.user_id = ?
+        ORDER BY a.assignment_date ASC, s.start_time ASC`,
+        [user_id]
+      );
+      return res.json(results);
+    } catch (err) {
+      return res.status(500).json({
+        error: err.message
+      });
+    }
+  });
+
+  // === Ambil semua assignment per company, filter bulan & tahun ===
+  app.get("/api/getAssignmentsByMonth/:company_id", async (req, res) => {
+    const { company_id } = req.params;
+    const { month, year } = req.query;
+
+    if (!month || !year) {
+      return res.status(400).json({ error: "Query params 'month' and 'year' are required" });
+    }
+
+    try {
+      const [results] = await db.query(
+        `SELECT
+          a.id AS assignment_id,
+          a.schedule_id,
+          a.user_id,
+          a.role_in_event,
+          a.job_desc,
+          a.assignment_date,
+          a.status,
+          a.assigned_at,
+          s.title,
+          s.description,
+          s.start_time,
+          s.end_time,
+          s.location,
+          u.name AS user_name
+        FROM assignments a
+        JOIN schedules s ON a.schedule_id = s.id
+        JOIN users u ON a.user_id = u.id
+        WHERE s.company_id = ?
+          AND MONTH(a.assignment_date) = ?
+          AND YEAR(a.assignment_date) = ?
+        ORDER BY a.assignment_date ASC, s.start_time ASC`,
+        [company_id, month, year]
+      );
+      return res.json(results);
+    } catch (err) {
+      return res.status(500).json({
+        error: err.message
+      });
+    }
   });
 
   /* =========================
