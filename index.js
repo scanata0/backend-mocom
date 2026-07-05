@@ -2308,6 +2308,55 @@ app.post("/api/assignNfc", async (req, res) => {
     });
   }
 });
+
+// ENDPOINT: Mengambil daftar SHIFT TUGAS HARI INI khusus untuk User tertentu
+app.get("/api/getTodayAssignmentsByUserId/:user_id", async (req, res) => {
+  const userId = req.params.user_id;
+  const logTimestamp = new Date().toLocaleString("id-ID");
+
+  console.log(
+    `\n[${logTimestamp}] 🕒 DASHBOARD HOME: Menarik Shift HARI INI untuk User ID: ${userId}`,
+  );
+
+  try {
+    // Query JOIN untuk mencocokkan user_id di assignments dengan detail di schedules khusus HARI INI
+    const querySql = `
+      SELECT
+        a.id as assignment_id,
+        a.schedule_id,
+        a.user_id,
+        a.role_in_event,
+        a.job_desc,
+        s.title,
+        s.description,
+        DATE_FORMAT(s.start_time, '%Y-%m-%d %H:%i:%s') as start_time,
+        DATE_FORMAT(s.end_time, '%Y-%m-%d %H:%i:%s') as end_time,
+        s.location
+      FROM assignments a
+      INNER JOIN schedules s ON a.schedule_id = s.id
+      WHERE a.user_id = ? 
+        AND (DATE(s.start_time) = CURDATE() OR DATE(s.end_time) = CURDATE())
+      ORDER BY s.start_time ASC
+    `;
+
+    const [results] = await db.query(querySql, [parseInt(userId)]);
+
+    console.log(
+      `[${logTimestamp}] 🚀 Sukses mengirimkan ${results.length} shift hari ini ke Android.`,
+    );
+    return res.json(results);
+  } catch (err) {
+    console.error(
+      `[${logTimestamp}] ❌ Database Error pada getTodayAssignments:`,
+      err.message,
+    );
+    return res.status(500).json({
+      error: "Gagal memuat shift hari ini",
+      details: err.message,
+    });
+  }
+});
+
 /* ========================================================
    REAL-TIME NFC ATTENDANCE TAP (PURE SHIFT-BASED)
 ======================================================== */
