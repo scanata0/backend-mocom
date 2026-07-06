@@ -2,6 +2,7 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const { initDb } = require("./db");
+const bcrypt = require("bcrypt");
 
 const app = express();
 
@@ -94,11 +95,18 @@ app.post("/api/registerCompany", async (req, res) => {
     console.log("Mendaftarkan Perusahaan:", company_name);
 
     // 1. Jalankan Query Pertama: Masukkan data ke tabel companies (Menggunakan Await)
+    const hashedPassword = await bcrypt.hash(password, 10);
     const [companyResult] = await db.query(
       `INSERT INTO companies 
         (company_name, email, password, phone_number, address) 
         VALUES (?, ?, ?, ?, ?)`,
-      [company_name, email, password, phone_number, address],
+      [
+        company_name,
+        email,
+        hashedPassword,
+        phone_number,
+        address,
+      ]
     );
 
     // Ambil ID otomatis dari hasil insert barusan
@@ -115,7 +123,13 @@ app.post("/api/registerCompany", async (req, res) => {
       `INSERT INTO users 
         (full_name, username, email, password, role_id, company_id) 
         VALUES (?, ?, ?, ?, 1, ?)`,
-      [fullNameAdmin, usernameAwal, email, password, companyId],
+      [
+        fullNameAdmin,
+        usernameAwal,
+        email,
+        hashedPassword,
+        companyId,
+      ],
     );
 
     console.log(
@@ -289,6 +303,8 @@ app.post("/api/register", async (req, res) => {
   try {
     const { full_name, username, email, password, role_id, company_id } =
       req.body;
+    
+    const hashedPassword = await bcrypt.hash(password, 10);
 
     console.log("=========================================");
     console.log(
@@ -303,13 +319,13 @@ app.post("/api/register", async (req, res) => {
         (full_name, username, email, password, role_id, company_id)
         VALUES (?, ?, ?, ?, ?, ?)`,
       [
-        full_name,
-        username,
-        email,
-        password,
-        parseInt(role_id),
-        parseInt(company_id),
-      ],
+          full_name,
+          username,
+          email,
+          hashedPassword,
+          parseInt(role_id),
+          parseInt(company_id),
+      ]
     );
 
     console.log(
@@ -344,21 +360,22 @@ app.post("/api/register", async (req, res) => {
 app.post("/api/login", async (req, res) => {
   try {
     const { email, username, password } = req.body;
-
+    console.log(">>>>>>>> MASUK LOGIN USER <<<<<<<<");
     console.log("EMAIL =", email);
     console.log("PASSWORD =", password);
 
     const [results] = await db.query(
       `SELECT
-        u.id,
-        u.company_id,
-        u.full_name,
-        u.username,
-        u.email,
-        u.role_id
+          u.id,
+          u.company_id,
+          u.full_name,
+          u.username,
+          u.email,
+          u.role_id,
+          u.password
       FROM users u
-      WHERE (u.email = ? OR u.username = ?) AND u.password = ?`,
-      [email, username, password],
+      WHERE (u.email = ? OR u.username = ?)`,
+      [email, username]
     );
 
     if (results.length === 0) {
@@ -367,7 +384,21 @@ app.post("/api/login", async (req, res) => {
       });
     }
 
-    res.json(results[0]);
+    const user = results[0];
+
+    const isMatch = await bcrypt.compare(
+        password,
+        user.password
+    );
+
+    if (!isMatch) {
+        return res.status(401).json({
+            message: "Login gagal"
+        });
+    }
+
+    delete user.password;
+    res.json(user);
   } catch (err) {
     console.error(err);
     res.status(500).json({
@@ -377,35 +408,56 @@ app.post("/api/login", async (req, res) => {
 });
 
 // LOGIN
-app.post("/api/loginCompany", (req, res) => {
-  const { email, password } = req.body;
+app.post("/api/loginCompany", async (req, res) => {
+    try {
+        const { email, password } = req.body;
 
-  db.query(
-    `SELECT 
-        id
-        company_name,
-        email,
-        phone_number,
-        address
-      FROM companies
-      WHERE email = ? AND password = ?`,
-    [email, password],
-    (err, results) => {
-      if (err) {
-        return res.status(500).json({
-          error: err.message,
+        const [results] = await db.query(
+            `SELECT
+                id,
+                company_name,
+                email,
+                password,
+                phone_number,
+                address
+            FROM companies
+            WHERE email = ?`,
+            [email]
+        );
+
+        if (results.length === 0) {
+            return res.status(401).json({
+                message: "Login gagal"
+            });
+        }
+
+        const company = results[0];
+
+        console.log("Password input :", password);
+        console.log("Password DB    :", company.password);
+
+        const isMatch = await bcrypt.compare(
+            password,
+            company.password
+        );
+
+        if (!isMatch) {
+            return res.status(401).json({
+                message: "Login gagal"
+            });
+        }
+
+        console.log("MATCH =", isMatch);
+
+        delete company.password;
+
+        res.json(company);
+
+    } catch (err) {
+        res.status(500).json({
+            error: err.message
         });
-      }
-
-      if (results.length === 0) {
-        return res.status(401).json({
-          message: "Login gagal",
-        });
-      }
-
-      res.json(results[0]);
-    },
-  );
+    }
 });
 
 // PROFILE
