@@ -484,24 +484,16 @@ app.get("/api/getUserProfile/:id", async (req, res) => {
 /* =========================
   USERS
 ========================= */
-
-app.get("/api/getAllUsers", (req, res) => {
+app.get("/api/getAllUsers", async (req, res) => {
   const timestamp = new Date().toLocaleString("id-ID");
   const clientIp = req.headers["x-forwarded-for"] || req.socket.remoteAddress;
 
   console.log(`\n[${timestamp}] 📥 GET Request masuk ke /api/getAllUsers`);
   console.log(`[${timestamp}] 🖥️  Dipanggil oleh IP: ${clientIp}`);
 
-  db.query("SELECT * FROM users", (err, results) => {
-    if (err) {
-      console.error(`[${timestamp}] ❌ Database Error:`, err.message);
+  try {
+    const [results] = await db.query("SELECT * FROM users");
 
-      return res.status(500).json({
-        error: err.message,
-      });
-    }
-
-    // === PERBAIKAN LOG UNTUK MENAMPILKAN SEMUA DATA ===
     console.log(
       `[${timestamp}] 🚀 Sukses mengambil ${results.length} data dari database.`,
     );
@@ -514,7 +506,10 @@ app.get("/api/getAllUsers", (req, res) => {
     }
 
     res.json(results);
-  });
+  } catch (err) {
+    console.error(`[${timestamp}] ❌ Database Error:`, err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get("/api/getAllStaff", (req, res) => {
@@ -1269,39 +1264,40 @@ app.get("/api/getAttendanceReport/:company_id", async (req, res) => {
         user_id,
         role_in_event,
         job_desc,
-        assignment_date
+        assigned_at // 💡 Samakan penamaannya dengan Android & DB (image_e05a3f.png)
       } = req.body;
 
-      if (!assignment_date) {
-        return res.status(400).json({ error: "assignment_date is required" });
+      if (!assigned_at) {
+        return res.status(400).json({ error: "assigned_at is required" });
       }
 
-      // Cek apakah assignment sudah ada (schedule + user + tanggal yang sama)
+      // 💡 Ubah angka milidetik Long dari Android menjadi format DATETIME string yang dipahami MySQL
+      // Jika Android mengirim dateMillis berupa angka, kita ubah ke format MySQL: YYYY-MM-DD HH:MM:SS
+      const mysqlDateTime = new Date(assigned_at).toISOString().slice(0, 19).replace('T', ' ');
+
+      // Cek apakah assignment sudah ada menggunakan nama kolom yang benar
       const [existing] = await db.query(
-        `SELECT id FROM assignments WHERE schedule_id = ? AND user_id = ? AND assignment_date = ?`,
-        [schedule_id, user_id, assignment_date]
+        `SELECT id FROM assignments WHERE schedule_id = ? AND user_id = ?`,
+        [schedule_id, user_id] 
       );
 
       let resultId;
 
       if (existing.length > 0) {
-        // Sudah ada → update saja
         await db.query(
           `UPDATE assignments SET role_in_event = ?, job_desc = ? WHERE id = ?`,
           [role_in_event, job_desc, existing[0].id]
         );
         resultId = existing[0].id;
       } else {
-        // Belum ada → insert baru
         const [result] = await db.query(
-          `INSERT INTO assignments (schedule_id, user_id, role_in_event, job_desc, assignment_date)
+          `INSERT INTO assignments (schedule_id, user_id, role_in_event, job_desc, assigned_at)
            VALUES (?, ?, ?, ?, ?)`,
-          [schedule_id, user_id, role_in_event, job_desc, assignment_date]
+          [schedule_id, user_id, role_in_event, job_desc, mysqlDateTime]
         );
         resultId = result.insertId;
       }
-
-      // auto notification
+      
       try {
         await db.query(
           `INSERT INTO notifications
@@ -1319,7 +1315,7 @@ app.get("/api/getAttendanceReport/:company_id", async (req, res) => {
         user_id,
         role_in_event,
         job_desc,
-        assignment_date
+        assigned_at
       });
     } catch (err) {
       console.error("❌ BACKEND ERROR pada insertAssignments:", err.message);
@@ -1327,9 +1323,7 @@ app.get("/api/getAttendanceReport/:company_id", async (req, res) => {
         error: err.message
       });
     }
-  });
-
-
+});
 
   app.get("/api/getTodayAssignmentsByUserId/:user_id", async (req, res) => {
     const { user_id } = req.params;
@@ -2011,16 +2005,14 @@ app.post("/api/insertAnnouncements", (req, res) => {
   );
 });
 
-app.get("/api/getAllAnnouncements", (req, res) => {
-  db.query("SELECT * FROM announcements", (err, results) => {
-    if (err) {
-      return res.status(500).json({
-        error: err.message,
-      });
-    }
-
+app.get("/api/getAllAnnouncements", async (req, res) => {
+  try {
+    const [results] = await db.query("SELECT * FROM announcements");
     res.json(results);
-  });
+    console.log(results)
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 /* =========================
