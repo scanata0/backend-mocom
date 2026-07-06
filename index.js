@@ -2618,6 +2618,40 @@ app.post("/api/checkInNfc", async (req, res) => {
   }
 });
 
+app.put("/api/users/:id/password", async (req, res) => {
+    try {
+
+        const id = req.params.id;
+        const { password } = req.body;
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+
+        await db.query(
+            `
+            UPDATE users
+            SET password = ?
+            WHERE id = ?
+            `,
+            [
+                hashedPassword,
+                id
+            ]
+        );
+
+        res.json({
+            success: true,
+            message: "Password berhasil diperbarui."
+        });
+
+    } catch (err) {
+
+        res.status(500).json({
+            error: err.message
+        });
+
+    }
+});
+
 app.get("/test", (req, res) => {
   console.log("masuk test");
   res.send("OK");
