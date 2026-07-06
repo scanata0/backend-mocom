@@ -1,4 +1,5 @@
 const { initDb } = require("./db");
+const bcrypt = require("bcrypt");
 
 let db;
 
@@ -44,20 +45,23 @@ const runSeeder = async () => {
       )
     `);
 
+    const company1Password = await bcrypt.hash("majujaya123", 10);
+    const company2Password = await bcrypt.hash("adminsejahtera123", 10);
+
     await db.query(
       "INSERT INTO companies (company_name, email, password, phone_number, address) VALUES ?",
       [[
         [
           "PT Maju Jaya",
           "admin@majujaya.com",
-          "majujaya123",
+          company1Password,
           "08123456789",
           "Surabaya"
         ],
         [
           "PT Sejahtera Abadi",
           "admin@sejahtera.com",
-          "adminsejahtera123",
+          company2Password,
           "08234567890",
           "Jakarta"
         ]
@@ -84,26 +88,28 @@ const runSeeder = async () => {
       )
     `);
 
+    const defaultPassword = await bcrypt.hash("123456", 10);
+
     await db.query(
       "INSERT INTO users (role_id, company_id, full_name, username, email, password) VALUES ?",
       [[
         // Company 1 - Admin
-        [1, 1, "Budi Santoso", "budi", "budi@majujaya.com", "123456"],
+        [1, 1, "Budi Santoso", "budi", "budi@majujaya.com", defaultPassword],
 
         // Company 1 - Staff
-        [2, 1, "Siti Aminah", "siti", "siti@majujaya.com", "123456"],
+        [2, 1, "Siti Aminah", "siti", "siti@majujaya.com", defaultPassword],
 
         // Company 2 - Admin
-        [1, 2, "Andi Wijaya", "andi", "andi@sejahtera.com", "123456"],
+        [1, 2, "Andi Wijaya", "andi", "andi@sejahtera.com", defaultPassword],
 
         // Company 2 - Staff
-        [2, 2, "Rina Putri", "rina", "rina@sejahtera.com", "123456"],
+        [2, 2, "Rina Putri", "rina", "rina@sejahtera.com", defaultPassword],
 
         // Member contoh
-        [3, 1, "Guest User", "guest", "guest@mail.com", "123456"],
+        [3, 1, "Guest User", "guest", "guest@mail.com", defaultPassword],
 
         //Superadmin
-        [4, , "Super Admin", "superadmin", "superadmin@mail.com", "123456"]
+        [4, , "Super Admin", "superadmin", "superadmin@mail.com", defaultPassword]
       ]]
     );
 
@@ -302,16 +308,31 @@ const runSeeder = async () => {
 
     console.log("✅ Tabel 'replacements' siap digunakan!");
 
+    const replacementPassword = await bcrypt.hash("123456",10);
+
     // =========================================================================
     // MOCK DATA SUNTIKAN: SIMULASI HASIL EVALUASI GEMINI AI (Untuk Mengisi Tab Website)
     // =========================================================================
 
     // 1. Pastikan data transaksi user & assignment penunjang sudah ada agar tidak error Foreign Key
-    await db.query(`
-    INSERT IGNORE INTO users (id, full_name, username, email, password, role_id, company_id) VALUES
-    (2, 'Andi Wijaya', 'andi_wijaya', 'andi@majujaya.com', '123456', 2, 1),
-    (4, 'Siti Rahma', 'siti_rahma', 'siti@majujaya.com', '123456', 2, 1)
-  `);
+    await db.query(
+    `INSERT IGNORE INTO users
+    (id, full_name, username, email, password, role_id, company_id)
+    VALUES
+    (2,?,?,?,?,2,1),
+    (4,?,?,?,?,2,1)`,
+    [
+        "Andi Wijaya",
+        "andi_wijaya",
+        "andi@majujaya.com",
+        replacementPassword,
+
+        "Siti Rahma",
+        "siti_rahma",
+        "siti@majujaya.com",
+        replacementPassword
+    ]
+    );
 
     // 2. Suntik Data Riwayat Pengajuan Izin Pasca-Saringan AI ke tabel Replacements
     await db.query(`
