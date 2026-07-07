@@ -492,7 +492,7 @@ app.get("/api/getAllUsers", async (req, res) => {
   console.log(`[${timestamp}] 🖥️  Dipanggil oleh IP: ${clientIp}`);
 
   try {
-    const [results] = await db.query("SELECT * FROM users");
+    const [results] = await db.query("SELECT * FROM users WHERE company_id IS NOT NULL");
 
     console.log(
       `[${timestamp}] 🚀 Sukses mengambil ${results.length} data dari database.`,
@@ -2007,9 +2007,11 @@ app.post("/api/insertAnnouncements", (req, res) => {
 
 app.get("/api/getAllAnnouncements", async (req, res) => {
   try {
-    const [results] = await db.query("SELECT * FROM announcements");
-    res.json(results);
+    const [results] = await db.query(
+      "SELECT id, title, message, created_by, UNIX_TIMESTAMP(created_at) * 1000 as created_at FROM announcements"
+    );
     console.log(results)
+    res.json(results);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
