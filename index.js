@@ -1340,7 +1340,6 @@ app.get("/api/getAttendanceReport/:company_id", async (req, res) => {
           a.user_id,
           a.role_in_event,
           a.job_desc,
-          a.assignment_date,
           a.status,
           a.assigned_at,
           s.title,
@@ -1356,15 +1355,15 @@ app.get("/api/getAttendanceReport/:company_id", async (req, res) => {
 
       // 2. LOGIKA FILTER: Menyisipkan kondisi month & year yang Anda maksud
       if (month && year) {
-        query += ` AND MONTH(a.assignment_date) = ? AND YEAR(a.assignment_date) = ?`;
+        query += ` AND MONTH(a.assigned_at) = ? AND YEAR(a.assigned_at) = ?`;
         params.push(month, year);
       } else if (year) {
-        query += ` AND YEAR(a.assignment_date) = ?`;
+        query += ` AND YEAR(a.assigned_at) = ?`;
         params.push(year);
       }
 
       // 3. SORTING UTAMA: Tetap menggunakan aturan sorting Anda
-      query += ` ORDER BY a.assignment_date ASC, s.start_time ASC`;
+      query += ` ORDER BY a.assigned_at ASC, s.start_time ASC`;
 
       const [results] = await db.query(query, params);
 
@@ -1379,6 +1378,51 @@ app.get("/api/getAttendanceReport/:company_id", async (req, res) => {
       });
     }
   });
+
+  app.get("/api/getAssignmentsByUserId/:user_id", async (req, res) => {
+  try {
+    const { user_id } = req.params;
+
+    console.log("REQUEST");
+    console.log(user_id);
+
+    const [results] = await db.query(
+      `
+      SELECT
+          a.id AS assignment_id,
+          a.schedule_id,
+          a.user_id,
+          a.role_in_event,
+          a.job_desc,
+          a.status,
+          a.assigned_at,
+          s.title,
+          s.description,
+          DATE_FORMAT(s.start_time, '%Y-%m-%d %H:%i:%s') AS start_time,
+          DATE_FORMAT(s.end_time, '%Y-%m-%d %H:%i:%s') AS end_time,
+          s.location
+      FROM assignments a
+      JOIN schedules s
+        ON a.schedule_id = s.id
+      WHERE a.user_id = ?
+      ORDER BY s.start_time ASC
+      `,
+      [parseInt(user_id)]
+    );
+
+    console.log("RESULT");
+    console.log(results);
+
+    return res.json(results);
+
+  } catch (err) {
+    console.error(err);
+
+    return res.status(500).json({
+      error: err.message,
+    });
+  }
+});
 
 /* =========================
   ATTENDANCES
