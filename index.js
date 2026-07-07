@@ -685,43 +685,44 @@ app.post("/api/insertUser", async (req, res) => {
   }
 
   try {
-    // 3. Eksekusi query INSERT data user baru ke database MySQL
-    const [result] = await db.query(
-      `INSERT INTO users 
-       (role_id, company_id, full_name, username, email, password, is_active) 
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [
-        parseInt(role_id),
-        parseInt(company_id),
-        full_name,
-        username,
-        email,
-        password,
-        parseInt(is_active ?? 1), // Jika Android tidak mengirim parameter is_active, otomatis set 1 (Aktif)
-      ],
-    );
+  // Hash password sebelum disimpan
+  const hashedPassword = await bcrypt.hash(password, 10);
 
-    console.log(
-      `[${timestamp}] ✅ Sukses mendaftarkan User baru dengan ID: ${result.insertId}`,
-    );
+  const [result] = await db.query(
+    `INSERT INTO users
+     (role_id, company_id, full_name, username, email, password, is_active)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      parseInt(role_id),
+      parseInt(company_id),
+      full_name,
+      username,
+      email,
+      hashedPassword,
+      parseInt(is_active ?? 1),
+    ]
+  );
 
-    // =========================================================================
-    // 💡 PERBAIKAN UTAMA: Kembalikan struktur data User murni ke Android Studio
-    // =========================================================================
-    return res.json({
-      id: result.insertId,
-      company_id: parseInt(company_id),
-      role_id: parseInt(role_id),
-      full_name: full_name,
-      username: username,
-      email: email,
-      password: password, // Tanpa enkripsi/hash sesuai requesmu sebelumnya
-      is_active: parseInt(is_active ?? 1),
-      created_at: new Date().toISOString().replace("T", " ").substring(0, 19),
-      updated_at: new Date().toISOString().replace("T", " ").substring(0, 19),
-    });
+  console.log(
+    `[${timestamp}] ✅ Sukses mendaftarkan User baru dengan ID: ${result.insertId}`
+  );
+
+  return res.json({
+    id: result.insertId,
+    company_id: parseInt(company_id),
+    role_id: parseInt(role_id),
+    full_name,
+    username,
+    email,
+    // jangan kirim password lagi
+    is_active: parseInt(is_active ?? 1),
+    created_at: new Date().toISOString().replace("T", " ").substring(0, 19),
+    updated_at: new Date().toISOString().replace("T", " ").substring(0, 19),
+  });
+
   } catch (err) {
     console.error(`[${timestamp}] ❌ Database Error:`, err.message);
+
     return res.status(500).json({
       success: false,
       error: "Terjadi kesalahan saat menyimpan data pengguna baru.",
@@ -2688,6 +2689,258 @@ app.put("/api/users/:id/password", async (req, res) => {
         });
 
     }
+});
+
+app.get("/api/getReplacementRequests/:company_id", async (req, res) => {
+
+    try {
+
+        const { company_id } = req.params;
+
+        const [results] = await db.query(`
+            SELECT
+              r.id,
+              r.assignment_id,
+              r.reason,
+              r.status,
+              r.created_at,
+
+              requester.full_name AS requester_name,
+              replacement.full_name AS replacement_name,
+
+              s.title,
+              s.location,
+              DATE_FORMAT(s.start_time,'%Y-%m-%d %H:%i') AS start_time,
+              DATE_FORMAT(s.end_time,'%Y-%m-%d %H:%i') AS end_time
+
+          FROM replacements r
+
+          JOIN assignments a
+          ON r.assignment_id = a.id
+
+          JOIN schedules s
+          ON a.schedule_id = s.id
+
+          JOIN users requester
+          ON requester.id = r.requested_by
+
+          JOIN users replacement
+          ON replacement.id = r.replacement_user_id
+
+          WHERE s.company_id = ?
+
+          ORDER BY r.created_at DESC;
+        `,
+        [parseInt(company_id)]);
+
+        console.log("company_id =", company_id);
+
+        return res.json(results);
+
+    } catch (err) {
+
+        console.log(err);
+
+        return res.status(500).json({
+            success: false,
+            error: err.message
+        });
+
+    }
+
+});
+
+app.put("/api/replacements/:id/reject", async (req,res)=>{
+
+    try{
+
+        await db.query(
+            `UPDATE replacements
+             SET status='rejected'
+             WHERE id=?`,
+            [req.params.id]
+        );
+
+        res.json({
+            success:true,
+            message:"Request berhasil ditolak."
+        });
+
+    }catch(err){
+
+        console.log(err);
+
+        res.status(500).json({
+            success:false,
+            error:err.message
+        });
+
+    }
+
+});
+
+app.put("/api/replacements/:id/approve", async (req, res) => {
+
+    console.log("==== APPROVE ====");
+    console.log("id :", req.params.id);
+    console.log("body :", req.body);
+
+    try {
+
+        const replacementId = req.params.id;
+        const { approved_by } = req.body;
+
+        console.log("1. sebelum SELECT");
+
+        const [[replacement]] = await db.query(
+            `SELECT * FROM replacements WHERE id=?`,
+            [replacementId]
+        );
+
+        console.log("2. hasil SELECT");
+        console.log(replacement);
+
+        if (!replacement) {
+            return res.status(404).json({
+                success:false,
+                message:"Replacement tidak ditemukan."
+            });
+        }
+
+        console.log("3. sebelum update assignment");
+
+        const [result1] = await db.query(
+            `UPDATE assignments
+             SET user_id=?
+             WHERE id=?`,
+            [
+                replacement.replacement_user_id,
+                replacement.assignment_id
+            ]
+        );
+
+        console.log("4. update assignment");
+        console.log(result1);
+
+        console.log("5. sebelum update replacement");
+
+        const [result2] = await db.query(
+            `UPDATE replacements
+             SET status='approved',
+                 approved_by=?
+             WHERE id=?`,
+            [
+                approved_by,
+                replacementId
+            ]
+        );
+
+        console.log("6. update replacement");
+        console.log(result2);
+
+        return res.json({
+            success:true,
+            message:"Replacement berhasil disetujui."
+        });
+
+    } catch(err){
+
+        console.log("ERROR APPROVE");
+        console.log(err);
+
+        return res.status(500).json({
+            success:false,
+            error:err.message
+        });
+
+    }
+
+});
+
+app.get("/api/replacements/:id", async (req, res) => {
+
+    const replacementId = req.params.id;
+
+    try {
+
+        const [results] = await db.query(
+
+            `
+            SELECT
+
+                r.id,
+                r.assignment_id,
+                r.requested_by,
+                r.replacement_user_id,
+                r.reason,
+                r.status,
+                r.created_at,
+                r.approved_by,
+
+                requester.full_name AS requester_name,
+                requester.email AS requester_email,
+
+                replacement.full_name AS replacement_name,
+                replacement.email AS replacement_email,
+
+                approver.full_name AS approved_by_name,
+
+                s.id AS schedule_id,
+                s.title,
+                s.description,
+                s.location,
+
+                DATE_FORMAT(s.start_time,'%Y-%m-%d %H:%i:%s') AS start_time,
+                DATE_FORMAT(s.end_time,'%Y-%m-%d %H:%i:%s') AS end_time
+
+            FROM replacements r
+
+            JOIN assignments a
+                ON a.id = r.assignment_id
+
+            JOIN schedules s
+                ON s.id = a.schedule_id
+
+            JOIN users requester
+                ON requester.id = r.requested_by
+
+            JOIN users replacement
+                ON replacement.id = r.replacement_user_id
+
+            LEFT JOIN users approver
+                ON approver.id = r.approved_by
+
+            WHERE r.id = ?
+            `,
+
+            [replacementId]
+
+        );
+
+        if(results.length == 0){
+
+            return res.status(404).json({
+                success:false,
+                message:"Replacement request tidak ditemukan."
+            });
+
+        }
+
+        console.log(results[0]);
+
+        return res.json(results[0]);
+
+    } catch(err){
+
+        console.log(err);
+
+        return res.status(500).json({
+            success:false,
+            error:err.message
+        });
+
+    }
+
 });
 
 app.get("/test", (req, res) => {
